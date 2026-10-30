@@ -1,7 +1,16 @@
 def naya_appointment():
-    naam = input("Patient ka naam: ")
-    doctor = input("Doctor ka naam: ")
-    waqt = input("Appointment ka waqt (jaise 5 baje): ")
+    naam = input("Patient ka naam: ").strip()
+    doctor = input("Doctor ka naam: ").strip()
+    waqt = input("Appointment ka waqt (jaise 5 baje): ").strip()
+
+    if naam == "" or doctor == "" or waqt == "":
+        print("Galti: koi bhi cheez khali nahi honi chahiye")
+        return
+
+    if "," in naam or "," in doctor or "," in waqt:
+        print("Galti: comma (,) mat likho")
+        return
+
     with open("appointments.txt", "a") as f:
         f.write(naam + "," + doctor + "," + waqt + "\n")
     print("Appointment save ho gayi")
