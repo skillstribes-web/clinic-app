@@ -92,7 +92,7 @@ def reminder_banao():
                     try:
                         jawab = client.chat.completions.create(
                             messages=[
-                                {"role": "system", "content": "Tum ek clinic ke madadgaar ho. Hamesha Roman Urdu mein jawab do, Hindi mein nahi. Sirf message likho, medical salah mat do."},
+                                {"role": "system", "content": "Tum ek clinic ke madadgaar ho. Hamesha Roman Urdu mein jawab do, Hindi mein nahi. Urdu lafz istemal karo (meharbani, shukriya). Sirf wohi maloomat likho jo di gayi hai, apni taraf se waqt ya koi aur cheez mat jodo. Sirf message likho, medical salah mat do."},
                                 {"role": "user", "content": sawal},
                             ],
                             model="openai/gpt-oss-20b",
