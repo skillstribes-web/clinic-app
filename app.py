@@ -1,3 +1,10 @@
+import os
+
+from groq import Groq
+
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+
 def naya_appointment():
     naam = input("Patient ka naam: ").strip()
     doctor = input("Doctor ka naam: ").strip()
@@ -70,6 +77,37 @@ def appointment_hatao():
         print(hati, "appointment hata di gayi")
 
 
+def reminder_banao():
+    talash = input("Kis patient ka reminder banana hai? ").lower()
+    try:
+        with open("appointments.txt", "r") as f:
+            for line in f:
+                naam, doctor, waqt = line.strip().split(",")
+                if talash == naam.lower():
+                    sawal = (
+                        "Is appointment ke liye patient ko ek chhota, shaista "
+                        "reminder message likho. Patient: " + naam
+                        + ", Doctor: " + doctor + ", Waqt: " + waqt
+                    )
+                    try:
+                        jawab = client.chat.completions.create(
+                            messages=[
+                                {"role": "system", "content": "Tum ek clinic ke madadgaar ho. Hamesha Roman Urdu mein jawab do, Hindi mein nahi. Sirf message likho, medical salah mat do."},
+                                {"role": "user", "content": sawal},
+                            ],
+                            model="openai/gpt-oss-20b",
+                        )
+                        print("")
+                        print(jawab.choices[0].message.content)
+                    except Exception:
+                        print("AI se jawab nahi mila, thori der baad koshish karo")
+                    return
+    except FileNotFoundError:
+        print("Abhi koi appointment save nahi hai")
+        return
+    print("Is naam ki koi appointment nahi mili")
+
+
 while True:
     print("")
     print("=== Clinic Appointment App ===")
@@ -77,8 +115,9 @@ while True:
     print("2. Saari appointments dekho")
     print("3. Patient dhoondo")
     print("4. Appointment hatao")
-    print("5. Band karo")
-    pasand = input("Apni pasand likho (1/2/3/4/5): ")
+    print("5. Reminder message banao (AI)")
+    print("6. Band karo")
+    pasand = input("Apni pasand likho (1/2/3/4/5/6): ")
 
     if pasand == "1":
         naya_appointment()
@@ -89,6 +128,8 @@ while True:
     elif pasand == "4":
         appointment_hatao()
     elif pasand == "5":
+        reminder_banao()
+    elif pasand == "6":
         print("Khuda hafiz")
         break
     else:
