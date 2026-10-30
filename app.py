@@ -34,14 +34,42 @@ def appointment_dhoondo():
         print("Is naam ki koi appointment nahi mili")
 
 
+def appointment_hatao():
+    talash = input("Kis patient ki appointment hatani hai? ").lower()
+    try:
+        with open("appointments.txt", "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        print("Abhi koi appointment save nahi hai")
+        return
+
+    bachi = []
+    hati = 0
+    for line in lines:
+        naam, doctor, waqt = line.strip().split(",")
+        if talash == naam.lower():
+            hati += 1
+        else:
+            bachi.append(line)
+
+    with open("appointments.txt", "w") as f:
+        f.writelines(bachi)
+
+    if hati == 0:
+        print("Is naam ki koi appointment nahi mili")
+    else:
+        print(hati, "appointment hata di gayi")
+
+
 while True:
     print("")
     print("=== Clinic Appointment App ===")
     print("1. Naya appointment")
     print("2. Saari appointments dekho")
     print("3. Patient dhoondo")
-    print("4. Band karo")
-    pasand = input("Apni pasand likho (1/2/3/4): ")
+    print("4. Appointment hatao")
+    print("5. Band karo")
+    pasand = input("Apni pasand likho (1/2/3/4/5): ")
 
     if pasand == "1":
         naya_appointment()
@@ -50,6 +78,8 @@ while True:
     elif pasand == "3":
         appointment_dhoondo()
     elif pasand == "4":
+        appointment_hatao()
+    elif pasand == "5":
         print("Khuda hafiz")
         break
     else:
