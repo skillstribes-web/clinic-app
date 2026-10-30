@@ -8,10 +8,30 @@ def naya_appointment():
 
 
 def appointments_dekho():
-    with open("appointments.txt", "r") as f:
-        for line in f:
-            naam, doctor, waqt = line.strip().split(",")
-            print(naam, "ko", doctor, "se", waqt, "par milna hai")
+    try:
+        with open("appointments.txt", "r") as f:
+            for line in f:
+                naam, doctor, waqt = line.strip().split(",")
+                print(naam, "ko", doctor, "se", waqt, "par milna hai")
+    except FileNotFoundError:
+        print("Abhi koi appointment save nahi hai")
+
+
+def appointment_dhoondo():
+    talash = input("Kis patient ka naam dhoondna hai? ").lower()
+    mila = False
+    try:
+        with open("appointments.txt", "r") as f:
+            for line in f:
+                naam, doctor, waqt = line.strip().split(",")
+                if talash in naam.lower():
+                    print(naam, "ko", doctor, "se", waqt, "par milna hai")
+                    mila = True
+    except FileNotFoundError:
+        print("Abhi koi appointment save nahi hai")
+        return
+    if not mila:
+        print("Is naam ki koi appointment nahi mili")
 
 
 while True:
@@ -19,14 +39,17 @@ while True:
     print("=== Clinic Appointment App ===")
     print("1. Naya appointment")
     print("2. Saari appointments dekho")
-    print("3. Band karo")
-    pasand = input("Apni pasand likho (1/2/3): ")
+    print("3. Patient dhoondo")
+    print("4. Band karo")
+    pasand = input("Apni pasand likho (1/2/3/4): ")
 
     if pasand == "1":
         naya_appointment()
     elif pasand == "2":
         appointments_dekho()
     elif pasand == "3":
+        appointment_dhoondo()
+    elif pasand == "4":
         print("Khuda hafiz")
         break
     else:
