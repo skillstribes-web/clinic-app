@@ -1,13 +1,37 @@
+import hmac
 import os
+import secrets
 from datetime import datetime
 from urllib.parse import quote
 
-from flask import Flask, redirect, render_template_string, request
+from flask import Flask, redirect, render_template_string, request, session
 from groq import Groq
 
 web = Flask(__name__)
+web.secret_key = secrets.token_hex(32)
+web.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+LOGIN_PAGE = """
+<style>
+  body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
+  h1 { color: #0b6e4f; }
+  input { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; box-sizing: border-box; }
+  button { margin-top: 12px; padding: 8px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
+  button:hover { background: #095a40; }
+</style>
+
+<h1>Clinic Login</h1>
+{% if error %}
+<p style="color: red;">{{ error }}</p>
+{% endif %}
+<form method="post" action="/login">
+  <p>Password:</p>
+  <input type="password" name="password" autofocus>
+  <button type="submit">Log in</button>
+</form>
+"""
 
 PAGE = """
 <style>
@@ -25,6 +49,9 @@ PAGE = """
   th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
 </style>
 
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <button type="submit">Log out</button>
+</form>
 <h1>Clinic Appointment App</h1>
 
 {% if reminder %}
@@ -181,6 +208,37 @@ def find_error(name, doctor, date, time, gender, age, phone):
             return "Error: this doctor already has an appointment at that date and time"
 
     return ""
+
+
+@web.before_request
+def require_login():
+    if request.endpoint in ("login", "static"):
+        return None
+    if not session.get("logged_in"):
+        return redirect("/login")
+    return None
+
+
+@web.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        real_password = os.environ.get("CLINIC_PASSWORD", "")
+        typed_password = request.form["password"]
+        if real_password == "":
+            error = "No password is set on this computer"
+        elif hmac.compare_digest(typed_password.encode(), real_password.encode()):
+            session["logged_in"] = True
+            return redirect("/")
+        else:
+            error = "Wrong password"
+    return render_template_string(LOGIN_PAGE, error=error)
+
+
+@web.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect("/login")
 
 
 @web.route("/", methods=["GET", "POST"])
