@@ -2,7 +2,7 @@
 
 
 
-A small website for managing clinic appointments, built with Python and Flask.
+A small website for managing clinic appointments, built with Python, Flask and SQLite.
 
 It also uses a free AI (Groq) to write patient messages.
 
@@ -16,7 +16,7 @@ This is my first real project while learning AI app development.
 
 \- Add an appointment: name, age, gender, phone, doctor, date, time (AM/PM)
 
-\- Checks: no empty fields, no commas, valid date and time, valid phone
+\- Checks: no empty fields, valid date and time, valid age, valid phone
 
 \- Double-booking protection: the same doctor cannot have two appointments at the same date and time
 
@@ -64,27 +64,59 @@ This is my first real project while learning AI app development.
 
 \- web.py: the website (main file)
 
+\- clinic.db: the SQLite database with all appointments (never pushed to GitHub, \*.db is in .gitignore)
+
+\- migrate.py: one-time script that copied the old appointments.txt data into clinic.db (it stops if the database already has data)
+
+\- db\_practice.py: my SQLite practice file (uses practice.db)
+
+\- appointments.txt: the OLD data file, not used by web.py anymore. Kept only as an old backup. Never pushed (in .gitignore).
+
 \- app.py: the old terminal version (old 4-field format, not used anymore)
 
-\- appointments.txt: the saved data (never pushed to GitHub, it is in .gitignore)
-
-\- .gitignore: lists files Git must ignore
+\- .gitignore: lists files Git must ignore (appointments.txt, purani.txt, \*.db)
 
 \- NOTES.md: this file
 
 
 
-\## Data format
+\## Database (SQLite)
 
-One appointment per line, 7 fields separated by commas:
+\- SQLite is built into Python (import sqlite3), nothing to install.
 
-name,doctor,date,time,gender,age,phone
+\- Table appointments: id (automatic number), name, doctor, date, time, gender, age, phone
 
-Example (fake data): Ali,Dr Khan,05-11-2026,10:30 AM,Male,30,15551234567
+\- The date is saved as text like 05-11-2026 and the time like 9:00 AM. Python sorts them with datetime.
 
-Because commas separate the fields, the app does not allow commas in any field.
+\- web.py creates the table itself if it does not exist (init\_db).
 
-If the format changes, old lines break, so old test data must be removed.
+\- Reschedule and Delete work with the appointment id, so they always change exactly one row.
+
+\- Commas in names are allowed now (the old text file did not allow them).
+
+\- Always use ? placeholders in SQL, never join user text into the SQL string.
+
+\- Always put WHERE in UPDATE and DELETE, otherwise ALL rows change or disappear.
+
+\- After INSERT, UPDATE or DELETE call conn.commit(), otherwise the change is lost.
+
+
+
+\## SQL I learned
+
+\- CREATE TABLE IF NOT EXISTS: make a table
+
+\- INSERT INTO table (columns) VALUES (?, ?): add a row
+
+\- SELECT columns FROM table: read rows
+
+\- WHERE name LIKE ? with "%ar%": search (% means anything)
+
+\- ORDER BY age DESC: sort (DESC big to small, ASC small to big)
+
+\- UPDATE table SET column = ? WHERE id = ?: change a row
+
+\- DELETE FROM table WHERE id = ?: remove a row
 
 
 
@@ -108,7 +140,9 @@ If the format changes, old lines break, so old test data must be removed.
 
 \- The session secret key is created again every time the server starts, so everyone is logged out after a restart.
 
-\- Patient data must never be committed to GitHub.
+\- Patient data (clinic.db, appointments.txt) must never be committed to GitHub. Check git status before git add . (no .db file should be listed).
+
+\- clinic.db has no automatic backup yet. Copy it somewhere safe from time to time.
 
 
 
@@ -124,7 +158,7 @@ If the format changes, old lines break, so old test data must be removed.
 
 \- FileNotFoundError: use try/except around opening the file
 
-\- ValueError too many values to unpack: a bad line (extra commas) in the data file, fixed with checks and cleaning the file
+\- ValueError too many values to unpack: a bad line (extra commas) in the old data file
 
 \- Groq 404 model\_not\_found: the model was removed, switched to openai/gpt-oss-20b
 
@@ -135,6 +169,14 @@ If the format changes, old lines break, so old test data must be removed.
 \- Browser says site can't be reached: the server was stopped, run python web.py again
 
 \- Environment variable not found: open a new Git Bash window after setx
+
+\- Long code got cut when pasted (file ended in the middle of a function): use the Copy button of the code box, then check with wc -l web.py and tail -4 web.py
+
+\- SyntaxError after adding the missing part: two lines were glued together, the file had no new line at the end. Press Enter to split them.
+
+\- python web.py printed nothing and stopped: the file was incomplete (no web.run line at the end)
+
+\- clinic.db showed up in git status: \*.db was missing in .gitignore. Fixed with: echo "\*.db" >> .gitignore (two > signs, one > would erase the file). Check with cat -A .gitignore
 
 
 
@@ -148,15 +190,21 @@ git commit -m "message"
 
 git push
 
+(Run git status first and check that no .db file is listed.)
+
 
 
 \## Next ideas
 
-\- Put the app online (HTTPS, better login)
+\- Make a backup copy of clinic.db automatically
+
+\- Save the date as a real date (YYYY-MM-DD) and sort in SQL with ORDER BY
+
+\- Put the app online (HTTPS, better login, separate user accounts)
 
 \- Automatic SMS or WhatsApp (needs a paid service)
 
-\- Use a real database instead of a text file
+\- Add a patients table separate from appointments
 
 \- Translate or retire the old app.py
 
