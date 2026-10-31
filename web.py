@@ -29,7 +29,7 @@ PAGE = """
 
 {% if reminder %}
 <div style="border: 2px solid green; padding: 10px; margin: 10px 0; white-space: pre-wrap;">
-  <b>Reminder message:</b><br>{{ reminder }}
+  <b>Message:</b><br>{{ reminder }}
   {% if whatsapp_link %}
   <p><a href="{{ whatsapp_link }}" target="_blank">Open in WhatsApp</a></p>
   {% endif %}
@@ -113,6 +113,14 @@ PAGE = """
         <input type="hidden" name="time" value="{{ a[3] }}">
         <input type="hidden" name="phone" value="{{ a[6] }}">
         <button type="submit">Reminder (AI)</button>
+      </form>
+      <form method="post" action="/unavailable" style="margin: 0; display: inline;">
+        <input type="hidden" name="name" value="{{ a[0] }}">
+        <input type="hidden" name="doctor" value="{{ a[1] }}">
+        <input type="hidden" name="date" value="{{ a[2] }}">
+        <input type="hidden" name="time" value="{{ a[3] }}">
+        <input type="hidden" name="phone" value="{{ a[6] }}">
+        <button type="submit">Doctor unavailable</button>
       </form>
     </td>
   </tr>
@@ -241,6 +249,36 @@ def reminder():
         answer = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": "You are a helpful clinic assistant. Always reply in English. Use only the information given, do not add any time, date or other details yourself. Write only the message and give no medical advice."},
+                {"role": "user", "content": question},
+            ],
+            model="openai/gpt-oss-20b",
+        )
+        message = answer.choices[0].message.content
+        whatsapp_link = "https://wa.me/" + request.form["phone"] + "?text=" + quote(message)
+    except Exception:
+        message = "Could not get a reply from the AI, please try again later"
+
+    return render_template_string(
+        PAGE, appointments=read_appointments(), error="",
+        reminder=message, whatsapp_link=whatsapp_link
+    )
+
+
+@web.route("/unavailable", methods=["POST"])
+def unavailable():
+    question = (
+        "Write a short, polite message telling a patient that the doctor is "
+        "not available for this appointment and asking them to contact the "
+        "clinic to reschedule. Patient: " + request.form["name"]
+        + ", Doctor: " + request.form["doctor"]
+        + ", Date: " + request.form["date"]
+        + ", Time: " + request.form["time"]
+    )
+    whatsapp_link = ""
+    try:
+        answer = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a helpful clinic assistant. Always reply in English. Use only the information given. Do not invent a new date, time, phone number or reason. Write only the message and give no medical advice."},
                 {"role": "user", "content": question},
             ],
             model="openai/gpt-oss-20b",
