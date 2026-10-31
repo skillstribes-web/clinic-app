@@ -5,7 +5,6 @@ from groq import Groq
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-
 def naya_appointment():
     naam = input("Patient ka naam: ").strip()
     doctor = input("Doctor ka naam: ").strip()
@@ -25,6 +24,16 @@ def naya_appointment():
     except ValueError:
         print("Galti: tareekh aise likho: 05-11-2026")
         return
+
+    try:
+        with open("appointments.txt", "r") as f:
+            for line in f:
+                n, d, t, w = line.strip().split(",")
+                if d.lower() == doctor.lower() and t == tareekh and w.lower() == waqt.lower():
+                    print("Galti: is doctor ki us tareekh aur waqt par pehle se appointment hai")
+                    return
+    except FileNotFoundError:
+        pass
 
     with open("appointments.txt", "a") as f:
         f.write(naam + "," + doctor + "," + tareekh + "," + waqt + "\n")
