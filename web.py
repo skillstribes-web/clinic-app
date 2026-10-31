@@ -22,9 +22,23 @@ PAGE = """
 <h2>Saari appointments</h2>
 {% if appointments %}
 <table border="1" cellpadding="8">
-  <tr><th>Patient</th><th>Doctor</th><th>Tareekh</th><th>Waqt</th></tr>
+  <tr><th>Patient</th><th>Doctor</th><th>Tareekh</th><th>Waqt</th><th></th></tr>
   {% for a in appointments %}
-  <tr><td>{{ a[0] }}</td><td>{{ a[1] }}</td><td>{{ a[2] }}</td><td>{{ a[3] }}</td></tr>
+  <tr>
+    <td>{{ a[0] }}</td>
+    <td>{{ a[1] }}</td>
+    <td>{{ a[2] }}</td>
+    <td>{{ a[3] }}</td>
+    <td>
+      <form method="post" action="/hatao" style="margin: 0;">
+        <input type="hidden" name="naam" value="{{ a[0] }}">
+        <input type="hidden" name="doctor" value="{{ a[1] }}">
+        <input type="hidden" name="tareekh" value="{{ a[2] }}">
+        <input type="hidden" name="waqt" value="{{ a[3] }}">
+        <button type="submit">Hatao</button>
+      </form>
+    </td>
+  </tr>
   {% endfor %}
 </table>
 {% else %}
@@ -79,6 +93,27 @@ def home():
                 f.write(naam + "," + doctor + "," + tareekh + "," + waqt + "\n")
             return redirect("/")
     return render_template_string(PAGE, appointments=appointments_parho(), galti=galti)
+
+
+@web.route("/hatao", methods=["POST"])
+def hatao():
+    cheez = (
+        request.form["naam"] + ","
+        + request.form["doctor"] + ","
+        + request.form["tareekh"] + ","
+        + request.form["waqt"]
+    )
+    try:
+        with open("appointments.txt", "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return redirect("/")
+
+    with open("appointments.txt", "w") as f:
+        for line in lines:
+            if line.strip() != cheez:
+                f.write(line)
+    return redirect("/")
 
 
 web.run(debug=True)
