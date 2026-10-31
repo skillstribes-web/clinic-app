@@ -26,6 +26,8 @@ This is my first real project while learning AI app development.
 
 \- Search by name, doctor, date or phone (not case sensitive), with "Showing X of Y" and a Clear link
 
+\- Appointments are always shown sorted by date and time (earliest first)
+
 \- AI reminder message for a patient
 
 \- AI "doctor unavailable" message for a patient
@@ -149,8 +151,6 @@ git push
 \## Next ideas
 
 \- Show today's appointments separately
-
-\- Sort appointments by date and time
 
 \- Put the app online (HTTPS, better login)
 
