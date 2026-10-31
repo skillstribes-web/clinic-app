@@ -36,6 +36,8 @@ python app.py
 
 \- Tareekh (date) aur uski jaanch (datetime)
 
+\- Doctor ka same tareekh aur waqt par dobara appointment nahi ban sakta
+
 
 
 \## Masle jo aaye aur hal
