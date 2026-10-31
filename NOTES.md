@@ -28,6 +28,8 @@ This is my first real project while learning AI app development.
 
 \- Appointments are always shown sorted by date and time (earliest first)
 
+\- "Today's appointments" section at the top of the page (only today's appointments, in time order)
+
 \- AI reminder message for a patient
 
 \- AI "doctor unavailable" message for a patient
@@ -149,8 +151,6 @@ git push
 
 
 \## Next ideas
-
-\- Show today's appointments separately
 
 \- Put the app online (HTTPS, better login)
 
