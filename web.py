@@ -9,7 +9,18 @@ web = Flask(__name__)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 PAGE = """
-<h1>Clinic Appointment App</h1>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
+  h1 { color: #0b6e4f; }
+  h2 { margin-top: 30px; }
+  form p { margin: 8px 0; }
+  input { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
+  button { padding: 6px 12px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
+  button:hover { background: #095a40; }
+  table { border-collapse: collapse; width: 100%; background: white; }
+  th { background: #0b6e4f; color: white; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+</style><h1>Clinic Appointment App</h1>
 
 {% if reminder %}
 <div style="border: 2px solid green; padding: 10px; margin: 10px 0; white-space: pre-wrap;">
