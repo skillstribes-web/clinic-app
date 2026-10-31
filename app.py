@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 from groq import Groq
 
@@ -8,18 +9,25 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 def naya_appointment():
     naam = input("Patient ka naam: ").strip()
     doctor = input("Doctor ka naam: ").strip()
-    waqt = input("Appointment ka waqt (jaise 5 baje): ").strip()
+    tareekh = input("Tareekh (aise likho 05-11-2026): ").strip()
+    waqt = input("Waqt (jaise 5 baje shaam): ").strip()
 
-    if naam == "" or doctor == "" or waqt == "":
+    if naam == "" or doctor == "" or tareekh == "" or waqt == "":
         print("Galti: koi bhi cheez khali nahi honi chahiye")
         return
 
-    if "," in naam or "," in doctor or "," in waqt:
+    if "," in naam or "," in doctor or "," in tareekh or "," in waqt:
         print("Galti: comma (,) mat likho")
         return
 
+    try:
+        datetime.strptime(tareekh, "%d-%m-%Y")
+    except ValueError:
+        print("Galti: tareekh aise likho: 05-11-2026")
+        return
+
     with open("appointments.txt", "a") as f:
-        f.write(naam + "," + doctor + "," + waqt + "\n")
+        f.write(naam + "," + doctor + "," + tareekh + "," + waqt + "\n")
     print("Appointment save ho gayi")
 
 
@@ -27,8 +35,8 @@ def appointments_dekho():
     try:
         with open("appointments.txt", "r") as f:
             for line in f:
-                naam, doctor, waqt = line.strip().split(",")
-                print(naam, "ko", doctor, "se", waqt, "par milna hai")
+                naam, doctor, tareekh, waqt = line.strip().split(",")
+                print(naam, "ko", doctor, "se", tareekh, "ko", waqt, "par milna hai")
     except FileNotFoundError:
         print("Abhi koi appointment save nahi hai")
 
@@ -39,9 +47,9 @@ def appointment_dhoondo():
     try:
         with open("appointments.txt", "r") as f:
             for line in f:
-                naam, doctor, waqt = line.strip().split(",")
+                naam, doctor, tareekh, waqt = line.strip().split(",")
                 if talash in naam.lower():
-                    print(naam, "ko", doctor, "se", waqt, "par milna hai")
+                    print(naam, "ko", doctor, "se", tareekh, "ko", waqt, "par milna hai")
                     mila = True
     except FileNotFoundError:
         print("Abhi koi appointment save nahi hai")
@@ -62,7 +70,7 @@ def appointment_hatao():
     bachi = []
     hati = 0
     for line in lines:
-        naam, doctor, waqt = line.strip().split(",")
+        naam, doctor, tareekh, waqt = line.strip().split(",")
         if talash == naam.lower():
             hati += 1
         else:
@@ -82,12 +90,13 @@ def reminder_banao():
     try:
         with open("appointments.txt", "r") as f:
             for line in f:
-                naam, doctor, waqt = line.strip().split(",")
+                naam, doctor, tareekh, waqt = line.strip().split(",")
                 if talash == naam.lower():
                     sawal = (
                         "Is appointment ke liye patient ko ek chhota, shaista "
                         "reminder message likho. Patient: " + naam
-                        + ", Doctor: " + doctor + ", Waqt: " + waqt
+                        + ", Doctor: " + doctor + ", Tareekh: " + tareekh
+                        + ", Waqt: " + waqt
                     )
                     try:
                         jawab = client.chat.completions.create(
