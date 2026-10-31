@@ -1,9 +1,24 @@
-from flask import Flask, render_template_string
+from datetime import datetime
+
+from flask import Flask, redirect, render_template_string, request
 
 web = Flask(__name__)
 
 PAGE = """
 <h1>Clinic Appointment App</h1>
+
+<h2>Naya appointment</h2>
+{% if galti %}
+<p style="color: red;">{{ galti }}</p>
+{% endif %}
+<form method="post">
+  <p>Patient ka naam: <input name="naam"></p>
+  <p>Doctor ka naam: <input name="doctor"></p>
+  <p>Tareekh (jaise 05-11-2026): <input name="tareekh"></p>
+  <p>Waqt (jaise 5 baje shaam): <input name="waqt"></p>
+  <button type="submit">Save karo</button>
+</form>
+
 <h2>Saari appointments</h2>
 {% if appointments %}
 <table border="1" cellpadding="8">
@@ -31,9 +46,39 @@ def appointments_parho():
     return appointments
 
 
-@web.route("/")
+def galti_dhoondo(naam, doctor, tareekh, waqt):
+    if naam == "" or doctor == "" or tareekh == "" or waqt == "":
+        return "Galti: koi bhi cheez khali nahi honi chahiye"
+
+    if "," in naam or "," in doctor or "," in tareekh or "," in waqt:
+        return "Galti: comma (,) mat likho"
+
+    try:
+        datetime.strptime(tareekh, "%d-%m-%Y")
+    except ValueError:
+        return "Galti: tareekh aise likho: 05-11-2026"
+
+    for n, d, t, w in appointments_parho():
+        if d.lower() == doctor.lower() and t == tareekh and w.lower() == waqt.lower():
+            return "Galti: is doctor ki us tareekh aur waqt par pehle se appointment hai"
+
+    return ""
+
+
+@web.route("/", methods=["GET", "POST"])
 def home():
-    return render_template_string(PAGE, appointments=appointments_parho())
+    galti = ""
+    if request.method == "POST":
+        naam = request.form["naam"].strip()
+        doctor = request.form["doctor"].strip()
+        tareekh = request.form["tareekh"].strip()
+        waqt = request.form["waqt"].strip()
+        galti = galti_dhoondo(naam, doctor, tareekh, waqt)
+        if galti == "":
+            with open("appointments.txt", "a") as f:
+                f.write(naam + "," + doctor + "," + tareekh + "," + waqt + "\n")
+            return redirect("/")
+    return render_template_string(PAGE, appointments=appointments_parho(), galti=galti)
 
 
 web.run(debug=True)
