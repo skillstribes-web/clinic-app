@@ -13,6 +13,23 @@ web.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
+COMMON_STYLE = """
+<style>
+  body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
+  h1 { color: #0b6e4f; }
+  h2 { margin-top: 30px; }
+  form p { margin: 8px 0; }
+  input, select { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
+  button { padding: 6px 12px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
+  button:hover { background: #095a40; }
+  .red { background: #c0392b; }
+  .red:hover { background: #962d22; }
+  table { border-collapse: collapse; width: 100%; background: white; }
+  th { background: #0b6e4f; color: white; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+</style>
+"""
+
 LOGIN_PAGE = """
 <style>
   body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
@@ -33,22 +50,7 @@ LOGIN_PAGE = """
 </form>
 """
 
-PAGE = """
-<style>
-  body { font-family: Arial, sans-serif; max-width: 1000px; margin: 30px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
-  h1 { color: #0b6e4f; }
-  h2 { margin-top: 30px; }
-  form p { margin: 8px 0; }
-  input, select { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
-  button { padding: 6px 12px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
-  button:hover { background: #095a40; }
-  .red { background: #c0392b; }
-  .red:hover { background: #962d22; }
-  table { border-collapse: collapse; width: 100%; background: white; }
-  th { background: #0b6e4f; color: white; }
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-</style>
-
+PAGE = COMMON_STYLE + """
 <form method="post" action="/logout" style="float: right; margin: 0;">
   <button type="submit">Log out</button>
 </form>
@@ -123,7 +125,7 @@ PAGE = """
     <td>{{ a[2] }}</td>
     <td>{{ a[3] }}</td>
     <td>
-      <form method="post" action="/delete" style="margin: 0; display: inline;" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
+      <form method="post" action="/reschedule" style="margin: 0; display: inline;">
         <input type="hidden" name="name" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="date" value="{{ a[2] }}">
@@ -131,7 +133,7 @@ PAGE = """
         <input type="hidden" name="gender" value="{{ a[4] }}">
         <input type="hidden" name="age" value="{{ a[5] }}">
         <input type="hidden" name="phone" value="{{ a[6] }}">
-        <button type="submit" class="red">Delete</button>
+        <button type="submit">Reschedule</button>
       </form>
       <form method="post" action="/reminder" style="margin: 0; display: inline;">
         <input type="hidden" name="name" value="{{ a[0] }}">
@@ -149,6 +151,16 @@ PAGE = """
         <input type="hidden" name="phone" value="{{ a[6] }}">
         <button type="submit">Doctor unavailable</button>
       </form>
+      <form method="post" action="/delete" style="margin: 0; display: inline;" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
+        <input type="hidden" name="name" value="{{ a[0] }}">
+        <input type="hidden" name="doctor" value="{{ a[1] }}">
+        <input type="hidden" name="date" value="{{ a[2] }}">
+        <input type="hidden" name="time" value="{{ a[3] }}">
+        <input type="hidden" name="gender" value="{{ a[4] }}">
+        <input type="hidden" name="age" value="{{ a[5] }}">
+        <input type="hidden" name="phone" value="{{ a[6] }}">
+        <button type="submit" class="red">Delete</button>
+      </form>
     </td>
   </tr>
   {% endfor %}
@@ -156,6 +168,56 @@ PAGE = """
 {% else %}
 <p>No appointments saved yet</p>
 {% endif %}
+"""
+
+RESCHEDULE_PAGE = COMMON_STYLE + """
+<h1>Reschedule appointment</h1>
+<p><b>Patient:</b> {{ a[0] }} &nbsp; | &nbsp; <b>Doctor:</b> {{ a[1] }}</p>
+<p><b>Current date and time:</b> {{ a[2] }} at {{ a[3] }}</p>
+
+{% if error %}
+<p style="color: red;">{{ error }}</p>
+{% endif %}
+
+<form method="post" action="/reschedule/save">
+  <input type="hidden" name="name" value="{{ a[0] }}">
+  <input type="hidden" name="doctor" value="{{ a[1] }}">
+  <input type="hidden" name="date" value="{{ a[2] }}">
+  <input type="hidden" name="time" value="{{ a[3] }}">
+  <input type="hidden" name="gender" value="{{ a[4] }}">
+  <input type="hidden" name="age" value="{{ a[5] }}">
+  <input type="hidden" name="phone" value="{{ a[6] }}">
+  <p>New date (e.g. 05-11-2026): <input name="new_date" value="{{ a[2] }}"></p>
+  <p>New time:
+    <select name="hour">
+      <option>1</option>
+      <option>2</option>
+      <option>3</option>
+      <option>4</option>
+      <option>5</option>
+      <option>6</option>
+      <option>7</option>
+      <option>8</option>
+      <option>9</option>
+      <option>10</option>
+      <option>11</option>
+      <option>12</option>
+    </select>
+    :
+    <select name="minute">
+      <option>00</option>
+      <option>15</option>
+      <option>30</option>
+      <option>45</option>
+    </select>
+    <select name="ampm">
+      <option>AM</option>
+      <option>PM</option>
+    </select>
+  </p>
+  <button type="submit">Save new date and time</button>
+  &nbsp; <a href="/">Cancel</a>
+</form>
 """
 
 
@@ -170,6 +232,41 @@ def read_appointments():
     except FileNotFoundError:
         pass
     return appointments
+
+
+def build_time(form):
+    return form["hour"] + ":" + form["minute"] + " " + form["ampm"]
+
+
+def appointment_from_form(form):
+    return [
+        form["name"], form["doctor"], form["date"], form["time"],
+        form["gender"], form["age"], form["phone"],
+    ]
+
+
+def find_schedule_error(doctor, date, time, old_date="", old_time=""):
+    try:
+        datetime.strptime(date, "%d-%m-%Y")
+    except ValueError:
+        return "Error: write the date like this: 05-11-2026"
+
+    try:
+        datetime.strptime(time, "%I:%M %p")
+    except ValueError:
+        return "Error: please choose a valid time"
+
+    for n, d, dt, t, g, a, p in read_appointments():
+        same_slot = (
+            d.lower() == doctor.lower()
+            and dt == date
+            and t.lower() == time.lower()
+        )
+        is_this_appointment = (dt == old_date and t == old_time)
+        if same_slot and not is_this_appointment:
+            return "Error: this doctor already has an appointment at that date and time"
+
+    return ""
 
 
 def find_error(name, doctor, date, time, gender, age, phone):
@@ -193,21 +290,7 @@ def find_error(name, doctor, date, time, gender, age, phone):
     if not phone.isdigit() or len(phone) < 8 or len(phone) > 15:
         return "Error: phone must be 8 to 15 digits with the country code, no spaces, no + sign"
 
-    try:
-        datetime.strptime(date, "%d-%m-%Y")
-    except ValueError:
-        return "Error: write the date like this: 05-11-2026"
-
-    try:
-        datetime.strptime(time, "%I:%M %p")
-    except ValueError:
-        return "Error: please choose a valid time"
-
-    for n, d, dt, t, g, a, p in read_appointments():
-        if d.lower() == doctor.lower() and dt == date and t.lower() == time.lower():
-            return "Error: this doctor already has an appointment at that date and time"
-
-    return ""
+    return find_schedule_error(doctor, date, time)
 
 
 @web.before_request
@@ -248,10 +331,7 @@ def home():
         name = request.form["name"].strip()
         doctor = request.form["doctor"].strip()
         date = request.form["date"].strip()
-        time = (
-            request.form["hour"] + ":" + request.form["minute"]
-            + " " + request.form["ampm"]
-        )
+        time = build_time(request.form)
         gender = request.form["gender"].strip()
         age = request.form["age"].strip()
         phone = request.form["phone"].strip()
@@ -269,17 +349,44 @@ def home():
     )
 
 
+@web.route("/reschedule", methods=["POST"])
+def reschedule():
+    return render_template_string(
+        RESCHEDULE_PAGE, a=appointment_from_form(request.form), error=""
+    )
+
+
+@web.route("/reschedule/save", methods=["POST"])
+def reschedule_save():
+    old = appointment_from_form(request.form)
+    new_date = request.form["new_date"].strip()
+    new_time = build_time(request.form)
+
+    error = find_schedule_error(old[1], new_date, new_time, old[2], old[3])
+    if error != "":
+        return render_template_string(RESCHEDULE_PAGE, a=old, error=error)
+
+    old_line = ",".join(old)
+    new_line = ",".join([old[0], old[1], new_date, new_time, old[4], old[5], old[6]])
+
+    try:
+        with open("appointments.txt", "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return redirect("/")
+
+    with open("appointments.txt", "w") as f:
+        for line in lines:
+            if line.strip() == old_line:
+                f.write(new_line + "\n")
+            else:
+                f.write(line)
+    return redirect("/")
+
+
 @web.route("/delete", methods=["POST"])
 def delete():
-    target = (
-        request.form["name"] + ","
-        + request.form["doctor"] + ","
-        + request.form["date"] + ","
-        + request.form["time"] + ","
-        + request.form["gender"] + ","
-        + request.form["age"] + ","
-        + request.form["phone"]
-    )
+    target = ",".join(appointment_from_form(request.form))
     try:
         with open("appointments.txt", "r") as f:
             lines = f.readlines()
