@@ -112,6 +112,17 @@ PAGE = COMMON_STYLE + """
 </form>
 
 <h2>All appointments</h2>
+<form method="get" action="/" style="margin-bottom: 12px;">
+  <input name="q" value="{{ q }}" placeholder="Search by name, doctor, date or phone" size="40">
+  <button type="submit">Search</button>
+  {% if q %}
+  &nbsp; <a href="/">Clear</a>
+  {% endif %}
+</form>
+{% if q %}
+<p>Showing {{ appointments|length }} of {{ total }} appointments</p>
+{% endif %}
+
 {% if appointments %}
 <table>
   <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th></th></tr>
@@ -166,7 +177,11 @@ PAGE = COMMON_STYLE + """
   {% endfor %}
 </table>
 {% else %}
-<p>No appointments saved yet</p>
+  {% if q %}
+  <p>No appointments match your search.</p>
+  {% else %}
+  <p>No appointments saved yet</p>
+  {% endif %}
 {% endif %}
 """
 
@@ -232,6 +247,25 @@ def read_appointments():
     except FileNotFoundError:
         pass
     return appointments
+
+
+def render_main(error="", reminder="", whatsapp_link="", q=""):
+    all_appointments = read_appointments()
+    search = q.strip().lower()
+    shown = []
+    for a in all_appointments:
+        text = " ".join([a[0], a[1], a[2], a[6]]).lower()
+        if search in text:
+            shown.append(a)
+    return render_template_string(
+        PAGE,
+        appointments=shown,
+        total=len(all_appointments),
+        q=q.strip(),
+        error=error,
+        reminder=reminder,
+        whatsapp_link=whatsapp_link,
+    )
 
 
 def build_time(form):
@@ -343,10 +377,7 @@ def home():
                     + "," + gender + "," + age + "," + phone + "\n"
                 )
             return redirect("/")
-    return render_template_string(
-        PAGE, appointments=read_appointments(), error=error,
-        reminder="", whatsapp_link=""
-    )
+    return render_main(error=error, q=request.args.get("q", ""))
 
 
 @web.route("/reschedule", methods=["POST"])
@@ -423,10 +454,7 @@ def reminder():
     except Exception:
         message = "Could not get a reply from the AI, please try again later"
 
-    return render_template_string(
-        PAGE, appointments=read_appointments(), error="",
-        reminder=message, whatsapp_link=whatsapp_link
-    )
+    return render_main(reminder=message, whatsapp_link=whatsapp_link)
 
 
 @web.route("/unavailable", methods=["POST"])
@@ -453,10 +481,7 @@ def unavailable():
     except Exception:
         message = "Could not get a reply from the AI, please try again later"
 
-    return render_template_string(
-        PAGE, appointments=read_appointments(), error="",
-        reminder=message, whatsapp_link=whatsapp_link
-    )
+    return render_main(reminder=message, whatsapp_link=whatsapp_link)
 
 
 web.run(debug=True)
