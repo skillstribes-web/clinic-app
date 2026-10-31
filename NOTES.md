@@ -1,98 +1,162 @@
-\# Clinic App
+\# Clinic Appointment App
 
 
 
-\## What it does
+A small website for managing clinic appointments, built with Python and Flask.
 
-A clinic appointment app. There are two versions:
+It also uses a free AI (Groq) to write patient messages.
 
-\- Terminal app: app.py (older, in Roman Urdu)
-
-\- Website: web.py (main version, in English)
+This is my first real project while learning AI app development.
 
 
 
-\## How to run the website
+\## Features
 
-1\. cd Desktop/clinic-app
+\- Login with a password (shared password, stored on my computer)
 
-2\. python web.py
+\- Add an appointment: name, age, gender, phone, doctor, date, time (AM/PM)
 
-3\. Open http://127.0.0.1:5000 in the browser
+\- Checks: no empty fields, no commas, valid date and time, valid phone
 
-4\. Press Ctrl + C in Git Bash to stop the server
+\- Double-booking protection: the same doctor cannot have two appointments at the same date and time
 
+\- Reschedule an appointment (new date and time, same checks)
 
+\- Delete an appointment (with a confirmation popup)
 
-\## Features (website)
+\- Search by name, doctor, date or phone (not case sensitive), with "Showing X of Y" and a Clear link
 
-\- Add an appointment: patient name, age, gender, phone, doctor, date, time (hour, minute, AM/PM dropdowns)
+\- AI reminder message for a patient
 
-\- Checks: no empty fields, no commas, valid date, valid time, age 0-120, valid phone, no double booking for the same doctor, date and time
+\- AI "doctor unavailable" message for a patient
 
-\- Table of all appointments
-
-\- Delete button (red) with an "Are you sure?" question
-
-\- Reminder (AI) button: the AI writes a short reminder message
-
-\- Doctor unavailable button: the AI writes a message asking the patient to contact the clinic
-
-\- Open in WhatsApp link: opens WhatsApp with the patient's number and the message already filled in (staff presses Send)
-
-\- Green styled page (CSS)
+\- WhatsApp link: opens a chat with the patient with the message already typed (I press send myself)
 
 
 
-\## AI
+\## How to run
 
-\- Free Groq API, library: groq
+1\. Open Git Bash and go to the folder: cd Desktop/clinic-app
 
-\- Key is saved on the laptop as GROQ\_API\_KEY (never written in code or on GitHub)
+2\. Start the server: python web.py
 
-\- Model: openai/gpt-oss-20b
+3\. Open http://127.0.0.1:5000 in the browser and log in
 
-\- The AI only gets name, doctor, date and time. Age, gender and phone are never sent to the AI.
-
-\- Use only fake patient data while testing
+4\. Stop the server with Ctrl + C
 
 
 
-\## Data
+\## Settings on my computer (environment variables)
 
-\- Saved in appointments.txt, one line per appointment: name,doctor,date,time,gender,age,phone
+\- GROQ\_API\_KEY: my Groq key (never put it in the code or on GitHub)
 
-\- appointments.txt is in .gitignore, so patient data stays off GitHub
+\- CLINIC\_PASSWORD: the login password
 
-\- If the data format changes, old lines stop working, so remove the old test data (rm appointments.txt)
-
-
-
-\## Problems we met and how we fixed them
-
-\- FileNotFoundError: use try/except
-
-\- ValueError (too many values): check the input before saving it (no commas, no empty fields)
-
-\- purani.txt went to GitHub: git rm --cached, and write names in .gitignore before git add
-
-\- model\_not\_found: the model name had changed, use a current model name
-
-\- AI replied in Hindi: tell the AI the language in the prompt
-
-\- AI adds details by itself: tell it to use only the information given
-
-\- IndentationError: spaces must line up
+\- They are set with setx, then a NEW Git Bash window must be opened
 
 
 
-\## Next steps
+\## Files
 
-\- Login (password) so not everyone can see the appointments
+\- web.py: the website (main file)
 
-\- Edit or reschedule an appointment
+\- app.py: the old terminal version (old 4-field format, not used anymore)
 
-\- Put the website online
+\- appointments.txt: the saved data (never pushed to GitHub, it is in .gitignore)
+
+\- .gitignore: lists files Git must ignore
+
+\- NOTES.md: this file
+
+
+
+\## Data format
+
+One appointment per line, 7 fields separated by commas:
+
+name,doctor,date,time,gender,age,phone
+
+Example (fake data): Ali,Dr Khan,05-11-2026,10:30 AM,Male,30,15551234567
+
+Because commas separate the fields, the app does not allow commas in any field.
+
+If the format changes, old lines break, so old test data must be removed.
+
+
+
+\## AI notes
+
+\- Library: groq, model: openai/gpt-oss-20b
+
+\- The prompt says: reply in English, use only the information given, do not invent details, no medical advice
+
+\- Only name, doctor, date and time are sent to the AI. Age, gender and phone are NEVER sent.
+
+\- Use only fake patient data while testing (free AI tiers may use prompts)
+
+
+
+\## Security (important)
+
+\- The login is one shared password. Good for learning, not enough for a real clinic.
+
+\- Before going online I need: HTTPS, a separate account for each user, and stronger password handling.
+
+\- The session secret key is created again every time the server starts, so everyone is logged out after a restart.
+
+\- Patient data must never be committed to GitHub.
+
+
+
+\## Problems I had and how I fixed them
+
+\- python or pip not found: use python -m pip install ...
+
+\- SyntaxError: a plain sentence was written in the .py file, wrap it in print(...) or remove it
+
+\- IndentationError: lines must start with the same number of spaces
+
+\- TypeError str vs int: wrap input(...) in int(...)
+
+\- FileNotFoundError: use try/except around opening the file
+
+\- ValueError too many values to unpack: a bad line (extra commas) in the data file, fixed with checks and cleaning the file
+
+\- Groq 404 model\_not\_found: the model was removed, switched to openai/gpt-oss-20b
+
+\- AI answered in Hindi script: tell the AI the language in the prompt
+
+\- Data files pushed to GitHub by mistake: git rm --cached file, then add the file to .gitignore
+
+\- Browser says site can't be reached: the server was stopped, run python web.py again
+
+\- Environment variable not found: open a new Git Bash window after setx
+
+
+
+\## Git routine
+
+git status
+
+git add .
+
+git commit -m "message"
+
+git push
+
+
+
+\## Next ideas
+
+\- Show today's appointments separately
+
+\- Sort appointments by date and time
+
+\- Put the app online (HTTPS, better login)
 
 \- Automatic SMS or WhatsApp (needs a paid service)
+
+\- Use a real database instead of a text file
+
+\- Translate or retire the old app.py
 
