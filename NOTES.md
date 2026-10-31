@@ -2,67 +2,97 @@
 
 
 
-\## Kya karti hai
+\## What it does
 
-Appointments lena, dekhna, dhoondna, hatana, aur AI se reminder message banwana.
+A clinic appointment app. There are two versions:
 
+\- Terminal app: app.py (older, in Roman Urdu)
 
-
-\## Kaise chalani hai
-
-python app.py
+\- Website: web.py (main version, in English)
 
 
 
-\## AI ke liye
+\## How to run the website
 
-\- Groq ki free API, library: groq
+1\. cd Desktop/clinic-app
 
-\- Key laptop mein GROQ\_API\_KEY naam se save hai (code mein nahi)
+2\. python web.py
+
+3\. Open http://127.0.0.1:5000 in the browser
+
+4\. Press Ctrl + C in Git Bash to stop the server
+
+
+
+\## Features (website)
+
+\- Add an appointment: patient name, age, gender, phone, doctor, date, time (hour, minute, AM/PM dropdowns)
+
+\- Checks: no empty fields, no commas, valid date, valid time, age 0-120, valid phone, no double booking for the same doctor, date and time
+
+\- Table of all appointments
+
+\- Delete button (red) with an "Are you sure?" question
+
+\- Reminder (AI) button: the AI writes a short reminder message
+
+\- Doctor unavailable button: the AI writes a message asking the patient to contact the clinic
+
+\- Open in WhatsApp link: opens WhatsApp with the patient's number and the message already filled in (staff presses Send)
+
+\- Green styled page (CSS)
+
+
+
+\## AI
+
+\- Free Groq API, library: groq
+
+\- Key is saved on the laptop as GROQ\_API\_KEY (never written in code or on GitHub)
 
 \- Model: openai/gpt-oss-20b
 
-\- Asli patients ka data AI ko nahi bhejna
+\- The AI only gets name, doctor, date and time. Age, gender and phone are never sent to the AI.
+
+\- Use only fake patient data while testing
 
 
 
-\## Ab tak ka kaam
+\## Data
 
-\- Menu, save, search, delete
+\- Saved in appointments.txt, one line per appointment: name,doctor,date,time,gender,age,phone
 
-\- Input ke checks
+\- appointments.txt is in .gitignore, so patient data stays off GitHub
 
-\- AI reminder message
-
-\- Tareekh (date) aur uski jaanch (datetime)
-
-\- Doctor ka same tareekh aur waqt par dobara appointment nahi ban sakta
-
-\- Website (Flask): web.py, python web.py se chalti hai, http://127.0.0.1:5000
-
-\- Website par appointments ki table, naya appointment ka form, Hatao ka button
-
-\- Website par Reminder (AI) ka button
+\- If the data format changes, old lines stop working, so remove the old test data (rm appointments.txt)
 
 
 
+\## Problems we met and how we fixed them
+
+\- FileNotFoundError: use try/except
+
+\- ValueError (too many values): check the input before saving it (no commas, no empty fields)
+
+\- purani.txt went to GitHub: git rm --cached, and write names in .gitignore before git add
+
+\- model\_not\_found: the model name had changed, use a current model name
+
+\- AI replied in Hindi: tell the AI the language in the prompt
+
+\- AI adds details by itself: tell it to use only the information given
+
+\- IndentationError: spaces must line up
 
 
-\## Masle jo aaye aur hal
 
-\- FileNotFoundError: try/except
+\## Next steps
 
-\- ValueError: input ke checks
+\- Login (password) so not everyone can see the appointments
 
-\- purani.txt GitHub par chali gayi: git rm --cached
+\- Edit or reschedule an appointment
 
-\- model\_not\_found: model ka naam badla
+\- Put the website online
 
-
-
-\## Agla kaam
-
-\- Website ki shakal
-
-\- Website ko khoobsurat banana (rang, shakal)
+\- Automatic SMS or WhatsApp (needs a paid service)
 
