@@ -1,11 +1,14 @@
 import hmac
 import os
 import secrets
+import sqlite3
 from datetime import datetime
 from urllib.parse import quote
 
 from flask import Flask, redirect, render_template_string, request, session
 from groq import Groq
+
+DB_FILE = "clinic.db"
 
 web = Flask(__name__)
 web.secret_key = secrets.token_hex(32)
@@ -155,13 +158,7 @@ PAGE = COMMON_STYLE + """
     <td>{{ a[3] }}</td>
     <td>
       <form method="post" action="/reschedule" style="margin: 0; display: inline;">
-        <input type="hidden" name="name" value="{{ a[0] }}">
-        <input type="hidden" name="doctor" value="{{ a[1] }}">
-        <input type="hidden" name="date" value="{{ a[2] }}">
-        <input type="hidden" name="time" value="{{ a[3] }}">
-        <input type="hidden" name="gender" value="{{ a[4] }}">
-        <input type="hidden" name="age" value="{{ a[5] }}">
-        <input type="hidden" name="phone" value="{{ a[6] }}">
+        <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit">Reschedule</button>
       </form>
       <form method="post" action="/reminder" style="margin: 0; display: inline;">
@@ -181,13 +178,7 @@ PAGE = COMMON_STYLE + """
         <button type="submit">Doctor unavailable</button>
       </form>
       <form method="post" action="/delete" style="margin: 0; display: inline;" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
-        <input type="hidden" name="name" value="{{ a[0] }}">
-        <input type="hidden" name="doctor" value="{{ a[1] }}">
-        <input type="hidden" name="date" value="{{ a[2] }}">
-        <input type="hidden" name="time" value="{{ a[3] }}">
-        <input type="hidden" name="gender" value="{{ a[4] }}">
-        <input type="hidden" name="age" value="{{ a[5] }}">
-        <input type="hidden" name="phone" value="{{ a[6] }}">
+        <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit" class="red">Delete</button>
       </form>
     </td>
@@ -213,13 +204,7 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
 {% endif %}
 
 <form method="post" action="/reschedule/save">
-  <input type="hidden" name="name" value="{{ a[0] }}">
-  <input type="hidden" name="doctor" value="{{ a[1] }}">
-  <input type="hidden" name="date" value="{{ a[2] }}">
-  <input type="hidden" name="time" value="{{ a[3] }}">
-  <input type="hidden" name="gender" value="{{ a[4] }}">
-  <input type="hidden" name="age" value="{{ a[5] }}">
-  <input type="hidden" name="phone" value="{{ a[6] }}">
+  <input type="hidden" name="id" value="{{ a[7] }}">
   <p>New date (e.g. 05-11-2026): <input name="new_date" value="{{ a[2] }}"></p>
   <p>New time:
     <select name="hour">
@@ -254,17 +239,87 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
 """
 
 
+def connect():
+    return sqlite3.connect(DB_FILE)
+
+
+def init_db():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        doctor TEXT,
+        date TEXT,
+        time TEXT,
+        gender TEXT,
+        age TEXT,
+        phone TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+
 def read_appointments():
-    appointments = []
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT name, doctor, date, time, gender, age, phone, id FROM appointments")
+    rows = cur.fetchall()
+    conn.close()
+    return [list(row) for row in rows]
+
+
+def get_appointment(appointment_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, doctor, date, time, gender, age, phone, id FROM appointments WHERE id = ?",
+        (appointment_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return list(row)
+
+
+def add_appointment(name, doctor, date, time, gender, age, phone):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO appointments (name, doctor, date, time, gender, age, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (name, doctor, date, time, gender, age, phone),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_appointment_time(appointment_id, date, time):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE appointments SET date = ?, time = ? WHERE id = ?",
+        (date, time, appointment_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_appointment(appointment_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM appointments WHERE id = ?", (appointment_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_id(form):
     try:
-        with open("appointments.txt", "r") as f:
-            for line in f:
-                parts = line.strip().split(",")
-                if len(parts) == 7:
-                    appointments.append(parts)
-    except FileNotFoundError:
-        pass
-    return appointments
+        return int(form["id"])
+    except (KeyError, ValueError):
+        return None
 
 
 def sort_key(a):
@@ -308,14 +363,7 @@ def build_time(form):
     return form["hour"] + ":" + form["minute"] + " " + form["ampm"]
 
 
-def appointment_from_form(form):
-    return [
-        form["name"], form["doctor"], form["date"], form["time"],
-        form["gender"], form["age"], form["phone"],
-    ]
-
-
-def find_schedule_error(doctor, date, time, old_date="", old_time=""):
+def find_schedule_error(doctor, date, time, skip_id=None):
     try:
         datetime.strptime(date, "%d-%m-%Y")
     except ValueError:
@@ -326,14 +374,13 @@ def find_schedule_error(doctor, date, time, old_date="", old_time=""):
     except ValueError:
         return "Error: please choose a valid time"
 
-    for n, d, dt, t, g, a, p in read_appointments():
+    for a in read_appointments():
         same_slot = (
-            d.lower() == doctor.lower()
-            and dt == date
-            and t.lower() == time.lower()
+            a[1].lower() == doctor.lower()
+            and a[2] == date
+            and a[3].lower() == time.lower()
         )
-        is_this_appointment = (dt == old_date and t == old_time)
-        if same_slot and not is_this_appointment:
+        if same_slot and a[7] != skip_id:
             return "Error: this doctor already has an appointment at that date and time"
 
     return ""
@@ -342,10 +389,6 @@ def find_schedule_error(doctor, date, time, old_date="", old_time=""):
 def find_error(name, doctor, date, time, gender, age, phone):
     if name == "" or doctor == "" or date == "" or time == "" or gender == "" or age == "" or phone == "":
         return "Error: no field can be empty"
-
-    for value in (name, doctor, date, time, gender, age, phone):
-        if "," in value:
-            return "Error: please do not use commas (,)"
 
     if gender not in ("Male", "Female"):
         return "Error: please choose Male or Female"
@@ -407,63 +450,43 @@ def home():
         phone = request.form["phone"].strip()
         error = find_error(name, doctor, date, time, gender, age, phone)
         if error == "":
-            with open("appointments.txt", "a") as f:
-                f.write(
-                    name + "," + doctor + "," + date + "," + time
-                    + "," + gender + "," + age + "," + phone + "\n"
-                )
+            add_appointment(name, doctor, date, time, gender, age, phone)
             return redirect("/")
     return render_main(error=error, q=request.args.get("q", ""))
 
 
 @web.route("/reschedule", methods=["POST"])
 def reschedule():
-    return render_template_string(
-        RESCHEDULE_PAGE, a=appointment_from_form(request.form), error=""
-    )
+    appointment_id = get_id(request.form)
+    a = get_appointment(appointment_id)
+    if a is None:
+        return redirect("/")
+    return render_template_string(RESCHEDULE_PAGE, a=a, error="")
 
 
 @web.route("/reschedule/save", methods=["POST"])
 def reschedule_save():
-    old = appointment_from_form(request.form)
+    appointment_id = get_id(request.form)
+    a = get_appointment(appointment_id)
+    if a is None:
+        return redirect("/")
+
     new_date = request.form["new_date"].strip()
     new_time = build_time(request.form)
 
-    error = find_schedule_error(old[1], new_date, new_time, old[2], old[3])
+    error = find_schedule_error(a[1], new_date, new_time, skip_id=a[7])
     if error != "":
-        return render_template_string(RESCHEDULE_PAGE, a=old, error=error)
+        return render_template_string(RESCHEDULE_PAGE, a=a, error=error)
 
-    old_line = ",".join(old)
-    new_line = ",".join([old[0], old[1], new_date, new_time, old[4], old[5], old[6]])
-
-    try:
-        with open("appointments.txt", "r") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        return redirect("/")
-
-    with open("appointments.txt", "w") as f:
-        for line in lines:
-            if line.strip() == old_line:
-                f.write(new_line + "\n")
-            else:
-                f.write(line)
+    update_appointment_time(a[7], new_date, new_time)
     return redirect("/")
 
 
 @web.route("/delete", methods=["POST"])
 def delete():
-    target = ",".join(appointment_from_form(request.form))
-    try:
-        with open("appointments.txt", "r") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        return redirect("/")
-
-    with open("appointments.txt", "w") as f:
-        for line in lines:
-            if line.strip() != target:
-                f.write(line)
+    appointment_id = get_id(request.form)
+    if appointment_id is not None:
+        delete_appointment(appointment_id)
     return redirect("/")
 
 
@@ -520,4 +543,5 @@ def unavailable():
     return render_main(reminder=message, whatsapp_link=whatsapp_link)
 
 
+init_db()
 web.run(debug=True)
