@@ -1,17 +1,27 @@
+import os
 from datetime import datetime
 
 from flask import Flask, redirect, render_template_string, request
+from groq import Groq
 
 web = Flask(__name__)
 
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
 PAGE = """
 <h1>Clinic Appointment App</h1>
+
+{% if reminder %}
+<div style="border: 2px solid green; padding: 10px; margin: 10px 0; white-space: pre-wrap;">
+  <b>Reminder message:</b><br>{{ reminder }}
+</div>
+{% endif %}
 
 <h2>Naya appointment</h2>
 {% if galti %}
 <p style="color: red;">{{ galti }}</p>
 {% endif %}
-<form method="post">
+<form method="post" action="/">
   <p>Patient ka naam: <input name="naam"></p>
   <p>Doctor ka naam: <input name="doctor"></p>
   <p>Tareekh (jaise 05-11-2026): <input name="tareekh"></p>
@@ -30,12 +40,19 @@ PAGE = """
     <td>{{ a[2] }}</td>
     <td>{{ a[3] }}</td>
     <td>
-      <form method="post" action="/hatao" style="margin: 0;">
+      <form method="post" action="/hatao" style="margin: 0; display: inline;">
         <input type="hidden" name="naam" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="tareekh" value="{{ a[2] }}">
         <input type="hidden" name="waqt" value="{{ a[3] }}">
         <button type="submit">Hatao</button>
+      </form>
+      <form method="post" action="/reminder" style="margin: 0; display: inline;">
+        <input type="hidden" name="naam" value="{{ a[0] }}">
+        <input type="hidden" name="doctor" value="{{ a[1] }}">
+        <input type="hidden" name="tareekh" value="{{ a[2] }}">
+        <input type="hidden" name="waqt" value="{{ a[3] }}">
+        <button type="submit">Reminder (AI)</button>
       </form>
     </td>
   </tr>
@@ -92,7 +109,9 @@ def home():
             with open("appointments.txt", "a") as f:
                 f.write(naam + "," + doctor + "," + tareekh + "," + waqt + "\n")
             return redirect("/")
-    return render_template_string(PAGE, appointments=appointments_parho(), galti=galti)
+    return render_template_string(
+        PAGE, appointments=appointments_parho(), galti=galti, reminder=""
+    )
 
 
 @web.route("/hatao", methods=["POST"])
@@ -114,6 +133,32 @@ def hatao():
             if line.strip() != cheez:
                 f.write(line)
     return redirect("/")
+
+
+@web.route("/reminder", methods=["POST"])
+def reminder():
+    sawal = (
+        "Is appointment ke liye patient ko ek chhota, shaista reminder "
+        "message likho. Patient: " + request.form["naam"]
+        + ", Doctor: " + request.form["doctor"]
+        + ", Tareekh: " + request.form["tareekh"]
+        + ", Waqt: " + request.form["waqt"]
+    )
+    try:
+        jawab = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "Tum ek clinic ke madadgaar ho. Hamesha Roman Urdu mein jawab do, Hindi mein nahi. Urdu lafz istemal karo (meharbani, shukriya). Sirf wohi maloomat likho jo di gayi hai, apni taraf se waqt ya koi aur cheez mat jodo. Sirf message likho, medical salah mat do."},
+                {"role": "user", "content": sawal},
+            ],
+            model="openai/gpt-oss-20b",
+        )
+        message = jawab.choices[0].message.content
+    except Exception:
+        message = "AI se jawab nahi mila, thori der baad koshish karo"
+
+    return render_template_string(
+        PAGE, appointments=appointments_parho(), galti="", reminder=message
+    )
 
 
 web.run(debug=True)
