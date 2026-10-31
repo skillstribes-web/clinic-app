@@ -249,6 +249,13 @@ def read_appointments():
     return appointments
 
 
+def sort_key(a):
+    try:
+        return datetime.strptime(a[2] + " " + a[3], "%d-%m-%Y %I:%M %p")
+    except ValueError:
+        return datetime.max
+
+
 def render_main(error="", reminder="", whatsapp_link="", q=""):
     all_appointments = read_appointments()
     search = q.strip().lower()
@@ -257,6 +264,7 @@ def render_main(error="", reminder="", whatsapp_link="", q=""):
         text = " ".join([a[0], a[1], a[2], a[6]]).lower()
         if search in text:
             shown.append(a)
+    shown.sort(key=sort_key)
     return render_template_string(
         PAGE,
         appointments=shown,
