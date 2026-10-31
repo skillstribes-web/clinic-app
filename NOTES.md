@@ -38,6 +38,14 @@ python app.py
 
 \- Doctor ka same tareekh aur waqt par dobara appointment nahi ban sakta
 
+\- Website (Flask): web.py, python web.py se chalti hai, http://127.0.0.1:5000
+
+\- Website par appointments ki table, naya appointment ka form, Hatao ka button
+
+\- Website par Reminder (AI) ka button
+
+
+
 
 
 \## Masle jo aaye aur hal
@@ -55,4 +63,6 @@ python app.py
 \## Agla kaam
 
 \- Website ki shakal
+
+\- Website ko khoobsurat banana (rang, shakal)
 
