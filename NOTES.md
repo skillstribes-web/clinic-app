@@ -34,6 +34,8 @@ python app.py
 
 \- AI reminder message
 
+\- Tareekh (date) aur uski jaanch (datetime)
+
 
 
 \## Masle jo aaye aur hal
@@ -49,8 +51,6 @@ python app.py
 
 
 \## Agla kaam
-
-\- Tareekh jodna
 
 \- Website ki shakal
 
