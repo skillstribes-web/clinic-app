@@ -65,6 +65,24 @@ PAGE = COMMON_STYLE + """
 </div>
 {% endif %}
 
+<h2>Today's appointments ({{ today_text }})</h2>
+{% if today_appointments %}
+<table>
+  <tr><th>Time</th><th>Patient</th><th>Age</th><th>Doctor</th><th>Phone</th></tr>
+  {% for a in today_appointments %}
+  <tr>
+    <td>{{ a[3] }}</td>
+    <td>{{ a[0] }}</td>
+    <td>{{ a[5] }}</td>
+    <td>{{ a[1] }}</td>
+    <td>{{ a[6] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No appointments today</p>
+{% endif %}
+
 <h2>New appointment</h2>
 {% if error %}
 <p style="color: red;">{{ error }}</p>
@@ -258,16 +276,26 @@ def sort_key(a):
 
 def render_main(error="", reminder="", whatsapp_link="", q=""):
     all_appointments = read_appointments()
+    all_appointments.sort(key=sort_key)
+
+    today = datetime.now().date()
+    today_appointments = []
+    for a in all_appointments:
+        if sort_key(a).date() == today:
+            today_appointments.append(a)
+
     search = q.strip().lower()
     shown = []
     for a in all_appointments:
         text = " ".join([a[0], a[1], a[2], a[6]]).lower()
         if search in text:
             shown.append(a)
-    shown.sort(key=sort_key)
+
     return render_template_string(
         PAGE,
         appointments=shown,
+        today_appointments=today_appointments,
+        today_text=today.strftime("%d-%m-%Y"),
         total=len(all_appointments),
         q=q.strip(),
         error=error,
