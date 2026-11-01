@@ -122,6 +122,7 @@ PAGE = COMMON_STYLE + """
   <button type="submit">Log out</button>
 </form>
 <h1>Clinic Appointment App</h1>
+<p><a href="/patients">Patients</a></p>
 
 {% if reminder %}
 <div style="border: 2px solid green; padding: 10px; margin: 10px 0; white-space: pre-wrap;">
@@ -268,6 +269,47 @@ PAGE = COMMON_STYLE + """
   {% else %}
   <p>No appointments saved yet</p>
   {% endif %}
+{% endif %}
+"""
+
+PATIENTS_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>Patients</h1>
+<p><a href="/">&larr; Back to appointments</a></p>
+
+<form method="get" action="/patients" style="margin-bottom: 12px;">
+  <input name="q" value="{{ q }}" placeholder="Search by name or phone" size="40">
+  <button type="submit">Search</button>
+  {% if q %}
+  &nbsp; <a href="/patients">Clear</a>
+  {% endif %}
+</form>
+<p>Showing {{ patients|length }} of {{ total }} patients</p>
+
+{% if patients %}
+<table>
+  <thead>
+  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Appointments</th><th>Last appointment</th></tr>
+  </thead>
+  <tbody>
+  {% for p in patients %}
+  <tr>
+    <td data-label="Patient">{{ p[1] }}</td>
+    <td data-label="Age">{{ p[2] }}</td>
+    <td data-label="Gender">{{ p[3] }}</td>
+    <td data-label="Phone">{{ p[4] }}</td>
+    <td data-label="Appointments">{{ p[5] }}</td>
+    <td data-label="Last appointment">{{ p[6] }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No patients found.</p>
 {% endif %}
 """
 
@@ -465,6 +507,30 @@ def delete_appointment(appointment_id):
     cur.execute("DELETE FROM appointments WHERE id = ?", (appointment_id,))
     conn.commit()
     conn.close()
+
+
+def read_patients():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT patients.id, patients.name, patients.age, patients.gender, patients.phone,
+               COUNT(appointments.id), MAX(appointments.date)
+        FROM patients
+        LEFT JOIN appointments ON appointments.patient_id = patients.id
+        GROUP BY patients.id
+        ORDER BY patients.name COLLATE NOCASE
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        p = list(row)
+        if p[6] is None:
+            p[6] = "-"
+        else:
+            p[6] = date_to_show(p[6])
+        result.append(p)
+    return result
 
 
 def get_id(form):
@@ -667,6 +733,21 @@ def home():
             add_appointment(name, doctor, date, time, gender, age, phone)
             return redirect("/")
     return render_main(error=error, q=request.args.get("q", ""))
+
+
+@web.route("/patients")
+def patients():
+    all_patients = read_patients()
+    q = request.args.get("q", "").strip()
+    search = q.lower()
+    shown = []
+    for p in all_patients:
+        text = (p[1] + " " + p[4]).lower()
+        if search in text:
+            shown.append(p)
+    return render_template_string(
+        PATIENTS_PAGE, patients=shown, total=len(all_patients), q=q
+    )
 
 
 @web.route("/reschedule", methods=["POST"])
