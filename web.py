@@ -262,13 +262,44 @@ def init_db():
     conn.close()
 
 
+def date_to_db(text):
+    return datetime.strptime(text, "%d-%m-%Y").strftime("%Y-%m-%d")
+
+
+def date_to_show(text):
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return text
+
+
+def time_to_db(text):
+    return datetime.strptime(text, "%I:%M %p").strftime("%H:%M")
+
+
+def time_to_show(text):
+    try:
+        return datetime.strptime(text, "%H:%M").strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        return text
+
+
+def row_to_show(row):
+    a = list(row)
+    a[2] = date_to_show(a[2])
+    a[3] = time_to_show(a[3])
+    return a
+
+
 def read_appointments():
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT name, doctor, date, time, gender, age, phone, id FROM appointments")
+    cur.execute(
+        "SELECT name, doctor, date, time, gender, age, phone, id FROM appointments ORDER BY date, time"
+    )
     rows = cur.fetchall()
     conn.close()
-    return [list(row) for row in rows]
+    return [row_to_show(row) for row in rows]
 
 
 def get_appointment(appointment_id):
@@ -282,7 +313,7 @@ def get_appointment(appointment_id):
     conn.close()
     if row is None:
         return None
-    return list(row)
+    return row_to_show(row)
 
 
 def add_appointment(name, doctor, date, time, gender, age, phone):
@@ -290,7 +321,7 @@ def add_appointment(name, doctor, date, time, gender, age, phone):
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO appointments (name, doctor, date, time, gender, age, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (name, doctor, date, time, gender, age, phone),
+        (name, doctor, date_to_db(date), time_to_db(time), gender, age, phone),
     )
     conn.commit()
     conn.close()
@@ -301,7 +332,7 @@ def update_appointment_time(appointment_id, date, time):
     cur = conn.cursor()
     cur.execute(
         "UPDATE appointments SET date = ?, time = ? WHERE id = ?",
-        (date, time, appointment_id),
+        (date_to_db(date), time_to_db(time), appointment_id),
     )
     conn.commit()
     conn.close()
@@ -322,21 +353,13 @@ def get_id(form):
         return None
 
 
-def sort_key(a):
-    try:
-        return datetime.strptime(a[2] + " " + a[3], "%d-%m-%Y %I:%M %p")
-    except ValueError:
-        return datetime.max
-
-
 def render_main(error="", reminder="", whatsapp_link="", q=""):
     all_appointments = read_appointments()
-    all_appointments.sort(key=sort_key)
 
-    today = datetime.now().date()
+    today_text = datetime.now().strftime("%d-%m-%Y")
     today_appointments = []
     for a in all_appointments:
-        if sort_key(a).date() == today:
+        if a[2] == today_text:
             today_appointments.append(a)
 
     search = q.strip().lower()
@@ -350,7 +373,7 @@ def render_main(error="", reminder="", whatsapp_link="", q=""):
         PAGE,
         appointments=shown,
         today_appointments=today_appointments,
-        today_text=today.strftime("%d-%m-%Y"),
+        today_text=today_text,
         total=len(all_appointments),
         q=q.strip(),
         error=error,
@@ -365,12 +388,12 @@ def build_time(form):
 
 def find_schedule_error(doctor, date, time, skip_id=None):
     try:
-        datetime.strptime(date, "%d-%m-%Y")
+        date = datetime.strptime(date, "%d-%m-%Y").strftime("%d-%m-%Y")
     except ValueError:
         return "Error: write the date like this: 05-11-2026"
 
     try:
-        datetime.strptime(time, "%I:%M %p")
+        time = datetime.strptime(time, "%I:%M %p").strftime("%I:%M %p").lstrip("0")
     except ValueError:
         return "Error: please choose a valid time"
 
