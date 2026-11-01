@@ -11,40 +11,48 @@ cur.execute("CREATE TABLE appointments (id INTEGER PRIMARY KEY AUTOINCREMENT, pa
 
 cur.execute("INSERT INTO patients (name, phone) VALUES (?, ?)", ("Ali", "15551230001"))
 cur.execute("INSERT INTO patients (name, phone) VALUES (?, ?)", ("Sara", "15551230002"))
+cur.execute("INSERT INTO patients (name, phone) VALUES (?, ?)", ("Omar", "15551230003"))
 
 cur.execute("INSERT INTO appointments (patient_id, doctor, date, time) VALUES (?, ?, ?, ?)", (1, "Dr Khan", "2026-11-05", "09:00"))
 cur.execute("INSERT INTO appointments (patient_id, doctor, date, time) VALUES (?, ?, ?, ?)", (1, "Dr Khan", "2026-11-12", "10:30"))
 cur.execute("INSERT INTO appointments (patient_id, doctor, date, time) VALUES (?, ?, ?, ?)", (2, "Dr Waseem", "2026-11-05", "11:00"))
 conn.commit()
 
-print("1. Patients:")
-cur.execute("SELECT id, name, phone FROM patients")
+print("1. Plain JOIN (Omar is missing, he has no appointments):")
+cur.execute("""
+SELECT patients.name, appointments.date
+FROM patients
+JOIN appointments ON appointments.patient_id = patients.id
+ORDER BY patients.name, appointments.date
+""")
 print(cur.fetchall())
 
-print("2. Appointments (only a patient number, no names):")
-cur.execute("SELECT id, patient_id, doctor, date, time FROM appointments")
+print("2. LEFT JOIN (Omar shows up, his date is None):")
+cur.execute("""
+SELECT patients.name, appointments.date
+FROM patients
+LEFT JOIN appointments ON appointments.patient_id = patients.id
+ORDER BY patients.name, appointments.date
+""")
 print(cur.fetchall())
 
-print("3. Joined, with the patient name and phone:")
+print("3. How many appointments each patient has:")
 cur.execute("""
-SELECT appointments.id, patients.name, patients.phone, appointments.doctor, appointments.date, appointments.time
-FROM appointments
-JOIN patients ON appointments.patient_id = patients.id
-ORDER BY appointments.date, appointments.time
+SELECT patients.name, COUNT(appointments.id)
+FROM patients
+LEFT JOIN appointments ON appointments.patient_id = patients.id
+GROUP BY patients.id
+ORDER BY patients.name
 """)
-for row in cur.fetchall():
-    print(row)
+print(cur.fetchall())
 
-print("4. After changing Ali's phone in ONE place:")
-cur.execute("UPDATE patients SET phone = ? WHERE name = ?", ("15559990000", "Ali"))
-conn.commit()
+print("4. Patients with no appointments:")
 cur.execute("""
-SELECT patients.name, patients.phone, appointments.date
-FROM appointments
-JOIN patients ON appointments.patient_id = patients.id
-ORDER BY appointments.date, appointments.time
+SELECT patients.name
+FROM patients
+LEFT JOIN appointments ON appointments.patient_id = patients.id
+WHERE appointments.id IS NULL
 """)
-for row in cur.fetchall():
-    print(row)
+print(cur.fetchall())
 
 conn.close()

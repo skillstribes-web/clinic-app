@@ -17,23 +17,46 @@ web.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 COMMON_STYLE = """
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
   h1 { color: #0b6e4f; }
   h2 { margin-top: 30px; }
   form p { margin: 8px 0; }
-  input, select { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
-  button { padding: 6px 12px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
+  input, select { padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 16px; }
+  button { padding: 8px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; font-size: 15px; }
   button:hover { background: #095a40; }
   .red { background: #c0392b; }
   .red:hover { background: #962d22; }
   table { border-collapse: collapse; width: 100%; background: white; }
   th { background: #0b6e4f; color: white; }
   th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  td[data-label="Date"], td[data-label="Time"] { white-space: nowrap; }
+  .inline-form { margin: 0; display: inline-block; }
+  .inline-form button { margin: 3px 3px 3px 0; }
+
+  @media (max-width: 700px) {
+    body { margin: 15px auto; }
+    h1 { font-size: 24px; }
+    form p input:not([type="hidden"]), form p select { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; }
+    form p.time-row select { display: inline-block; width: auto; min-width: 70px; }
+    input[name="q"] { display: block; width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+    button { min-height: 42px; }
+    table, thead, tbody, tr, td { display: block; }
+    table { background: transparent; }
+    thead { display: none; }
+    tr { margin-bottom: 14px; border: 1px solid #ddd; border-radius: 6px; background: white; }
+    td { display: flex; justify-content: space-between; gap: 12px; border: none; border-bottom: 1px solid #eee; padding: 8px 12px; }
+    td::before { content: attr(data-label); font-weight: bold; color: #555; }
+    td:last-child { border-bottom: none; }
+    td.actions { display: block; }
+    td.actions::before { content: none; }
+  }
 </style>
 """
 
 LOGIN_PAGE = """
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
   h1 { color: #0b6e4f; }
@@ -71,16 +94,20 @@ PAGE = COMMON_STYLE + """
 <h2>Today's appointments ({{ today_text }})</h2>
 {% if today_appointments %}
 <table>
+  <thead>
   <tr><th>Time</th><th>Patient</th><th>Age</th><th>Doctor</th><th>Phone</th></tr>
+  </thead>
+  <tbody>
   {% for a in today_appointments %}
   <tr>
-    <td>{{ a[3] }}</td>
-    <td>{{ a[0] }}</td>
-    <td>{{ a[5] }}</td>
-    <td>{{ a[1] }}</td>
-    <td>{{ a[6] }}</td>
+    <td data-label="Time">{{ a[3] }}</td>
+    <td data-label="Patient">{{ a[0] }}</td>
+    <td data-label="Age">{{ a[5] }}</td>
+    <td data-label="Doctor">{{ a[1] }}</td>
+    <td data-label="Phone">{{ a[6] }}</td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% else %}
 <p>No appointments today</p>
@@ -102,7 +129,7 @@ PAGE = COMMON_STYLE + """
   <p>Phone (country code first, digits only): <input name="phone" placeholder="e.g. 15551234567"></p>
   <p>Doctor name: <input name="doctor"></p>
   <p>Date (e.g. 05-11-2026): <input name="date"></p>
-  <p>Time:
+  <p class="time-row">Time:
     <select name="hour">
       <option>1</option>
       <option>2</option>
@@ -146,22 +173,25 @@ PAGE = COMMON_STYLE + """
 
 {% if appointments %}
 <table>
+  <thead>
   <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th></th></tr>
+  </thead>
+  <tbody>
   {% for a in appointments %}
   <tr>
-    <td>{{ a[0] }}</td>
-    <td>{{ a[5] }}</td>
-    <td>{{ a[4] }}</td>
-    <td>{{ a[6] }}</td>
-    <td>{{ a[1] }}</td>
-    <td>{{ a[2] }}</td>
-    <td>{{ a[3] }}</td>
-    <td>
-      <form method="post" action="/reschedule" style="margin: 0; display: inline;">
+    <td data-label="Patient">{{ a[0] }}</td>
+    <td data-label="Age">{{ a[5] }}</td>
+    <td data-label="Gender">{{ a[4] }}</td>
+    <td data-label="Phone">{{ a[6] }}</td>
+    <td data-label="Doctor">{{ a[1] }}</td>
+    <td data-label="Date">{{ a[2] }}</td>
+    <td data-label="Time">{{ a[3] }}</td>
+    <td class="actions">
+      <form method="post" action="/reschedule" class="inline-form">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit">Reschedule</button>
       </form>
-      <form method="post" action="/reminder" style="margin: 0; display: inline;">
+      <form method="post" action="/reminder" class="inline-form">
         <input type="hidden" name="name" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="date" value="{{ a[2] }}">
@@ -169,7 +199,7 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="phone" value="{{ a[6] }}">
         <button type="submit">Reminder (AI)</button>
       </form>
-      <form method="post" action="/unavailable" style="margin: 0; display: inline;">
+      <form method="post" action="/unavailable" class="inline-form">
         <input type="hidden" name="name" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="date" value="{{ a[2] }}">
@@ -177,13 +207,14 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="phone" value="{{ a[6] }}">
         <button type="submit">Doctor unavailable</button>
       </form>
-      <form method="post" action="/delete" style="margin: 0; display: inline;" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
+      <form method="post" action="/delete" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit" class="red">Delete</button>
       </form>
     </td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% else %}
   {% if q %}
@@ -206,7 +237,7 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
 <form method="post" action="/reschedule/save">
   <input type="hidden" name="id" value="{{ a[7] }}">
   <p>New date (e.g. 05-11-2026): <input name="new_date" value="{{ a[2] }}"></p>
-  <p>New time:
+  <p class="time-row">New time:
     <select name="hour">
       <option>1</option>
       <option>2</option>
