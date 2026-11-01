@@ -13,7 +13,6 @@ Test site (free hosting, fake data only): https://skillstribes.pythonanywhere.co
 - backup.py - copies clinic.db into backups/ with a timestamp, keeps the newest 10
 - migrate*.py - one-time scripts used to move old data to the new database layout
 - hash_practice.py, db_practice.py - practice files, not part of the app
-- app.py - old terminal version (to be deleted later)
 
 ## Private files (never push to GitHub)
 - clinic.db - all clinic data
@@ -27,7 +26,6 @@ Test site (free hosting, fake data only): https://skillstribes.pythonanywhere.co
 - appointments(id, patient_id, doctor, date, time, status)
 - doctors(id, name) - the list used by the dropdown
 - users(id, username, password_hash)
-- appointments_old - safety copy of the old table (laptop only), to be deleted later
 - Dates are saved as YYYY-MM-DD and times as 24h HH:MM; the screen shows DD-MM-YYYY and 9:00 AM
 - A patient is the same person if name (any case) and phone match
 - status is Scheduled, Done, No-show or Cancelled (old rows count as Scheduled)
@@ -133,7 +131,7 @@ Test site (free hosting, fake data only): https://skillstribes.pythonanywhere.co
 7. Patient data and AI privacy (AI switch, name hidden from AI, draft agreement) - DONE; legal check still to do
 8. Pilot: fake data first, then one trusted doctor, collect feedback - NEXT (after lawyer and doctor meeting)
 9. Extras: Patients page, appointment status, doctor list, theme, clinic name - DONE
-   Left: delete old app.py and the appointments_old table
+   Cleanup done: old app.py and appointments_old removed
 - Before a real pilot: clear the fake data on the server, set the clinic name, create the clinic's users
 - Later: paid plan ($10/month) for AI, daily automatic backups and a custom domain;
   roles (reception vs doctor); one server for many clinics
