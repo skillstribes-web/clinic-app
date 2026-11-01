@@ -5,12 +5,14 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from flask import Flask, redirect, render_template_string, request, session
 from groq import Groq
 from werkzeug.security import check_password_hash, generate_password_hash
 
 DB_FILE = "clinic.db"
+CLINIC_TZ = os.environ.get("CLINIC_TZ", "Asia/Karachi")
 
 MAX_FAILS = 5
 LOCK_SECONDS = 600
@@ -316,6 +318,10 @@ def connect():
     return sqlite3.connect(DB_FILE)
 
 
+def clinic_now():
+    return datetime.now(ZoneInfo(CLINIC_TZ))
+
+
 def init_db():
     conn = connect()
     cur = conn.cursor()
@@ -468,7 +474,7 @@ def get_id(form):
 def render_main(error="", reminder="", whatsapp_link="", q=""):
     all_appointments = read_appointments()
 
-    today_text = datetime.now().strftime("%d-%m-%Y")
+    today_text = clinic_now().strftime("%d-%m-%Y")
     today_appointments = []
     for a in all_appointments:
         if a[2] == today_text:
