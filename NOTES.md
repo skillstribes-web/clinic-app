@@ -16,17 +16,19 @@ This is my first real project while learning AI app development.
 
 \- Add an appointment: name, age, gender, phone, doctor, date, time (AM/PM)
 
+\- A patient is saved only once. If the same name and phone book again, the app reuses that patient.
+
 \- Checks: no empty fields, valid date and time, valid age, valid phone
 
-\- Double-booking protection: the same doctor cannot have two appointments at the same date and time
+\- Double-booking protection: the same doctor cannot have two appointments at the same date and time (also catches a date typed like 5-11-2026)
 
 \- Reschedule an appointment (new date and time, same checks)
 
-\- Delete an appointment (with a confirmation popup)
+\- Delete an appointment (with a confirmation popup). The patient is kept.
 
 \- Search by name, doctor, date or phone (not case sensitive), with "Showing X of Y" and a Clear link
 
-\- Appointments are always shown sorted by date and time (earliest first)
+\- Appointments are always shown sorted by date and time (earliest first), sorted by SQL
 
 \- "Today's appointments" section at the top of the page (only today's appointments, in time order)
 
@@ -68,13 +70,17 @@ This is my first real project while learning AI app development.
 
 \- web.py: the website (main file)
 
-\- clinic.db: the SQLite database with all appointments (never pushed to GitHub, \*.db is in .gitignore)
+\- clinic.db: the SQLite database (never pushed to GitHub, \*.db is in .gitignore)
 
 \- backup.py: copies clinic.db into the backups folder with the date and time in the name, and keeps only the newest 10 copies
 
 \- backups/: the backup copies (never pushed to GitHub, they are .db files)
 
 \- migrate.py: one-time script that copied the old appointments.txt data into clinic.db (it stops if the database already has data)
+
+\- migrate\_dates.py: one-time script that changed old dates and times to the new format (safe to run again)
+
+\- migrate\_patients.py: one-time script that split the old single appointments table into patients + appointments (safe to run again, it says "Already migrated"; it rolls back everything if something goes wrong)
 
 \- db\_practice.py: my SQLite practice file (uses practice.db)
 
@@ -92,11 +98,33 @@ This is my first real project while learning AI app development.
 
 \- SQLite is built into Python (import sqlite3), nothing to install.
 
-\- Table appointments: id (automatic number), name, doctor, date, time, gender, age, phone
+\- Table patients: id, name, age, gender, phone
 
-\- The date is saved as text like 05-11-2026 and the time like 9:00 AM. Python sorts them with datetime.
+\- Table appointments: id, patient\_id (the id of a patient), doctor, date, time
 
-\- web.py creates the table itself if it does not exist (init\_db).
+\- Table appointments\_old: the old single table, kept inside clinic.db as an extra safety copy. web.py does not use it. It can be deleted later.
+
+\- A patient is the same person when the name (ignoring capital letters) and the phone are the same.
+
+\- When the same patient books again, the age and gender are updated to the newest values.
+
+\- JOIN connects the tables: appointments JOIN patients ON appointments.patient\_id = patients.id
+
+&#x20; Use table.column (for example appointments.date) because both tables have an id column.
+
+\- Benefit: patient details are saved once. Changing a phone number in one place changes it for all that patient's appointments.
+
+\- In the database the date is saved as 2026-11-05 (YYYY-MM-DD) and the time as 24 hours like 09:00 or 15:30.
+
+&#x20; This way SQL can sort them correctly with ORDER BY date, time.
+
+\- On the screen I still see 05-11-2026 and 9:00 AM. web.py converts both ways:
+
+&#x20; date\_to\_db / time\_to\_db (when saving) and date\_to\_show / time\_to\_show (when showing).
+
+\- Rule: the database keeps the machine-friendly form, the screen shows the human-friendly form.
+
+\- web.py creates the tables itself if they do not exist (init\_db).
 
 \- Reschedule and Delete work with the appointment id, so they always change exactly one row.
 
@@ -107,6 +135,8 @@ This is my first real project while learning AI app development.
 \- Always put WHERE in UPDATE and DELETE, otherwise ALL rows change or disappear.
 
 \- After INSERT, UPDATE or DELETE call conn.commit(), otherwise the change is lost.
+
+\- For a big change: 1) make a backup (python backup.py), 2) write a migration script that checks its own work and rolls back on error, 3) change the code.
 
 
 
@@ -140,9 +170,17 @@ This is my first real project while learning AI app development.
 
 \- ORDER BY age DESC: sort (DESC big to small, ASC small to big)
 
+\- ORDER BY date, time: sort by date first, then by time
+
 \- UPDATE table SET column = ? WHERE id = ?: change a row
 
 \- DELETE FROM table WHERE id = ?: remove a row
+
+\- JOIN ... ON ...: connect two tables
+
+\- ALTER TABLE ... RENAME TO ...: rename a table
+
+\- BEGIN, commit(), rollback(): do many changes as one, all or nothing
 
 
 
@@ -202,6 +240,8 @@ This is my first real project while learning AI app development.
 
 \- clinic.db showed up in git status: \*.db was missing in .gitignore. Fixed with: echo "\*.db" >> .gitignore (two > signs, one > would erase the file). Check with cat -A .gitignore
 
+\- After the patients migration the old web.py does not work (the table changed). Run the migration and replace web.py in the same session.
+
 
 
 \## Git routine
@@ -220,13 +260,15 @@ git push
 
 \## Next ideas
 
-\- Save the date as a real date (YYYY-MM-DD) and sort in SQL with ORDER BY
+\- A Patients page: list of patients with how many appointments each has
 
-\- Add a patients table separate from appointments
+\- Pick an existing patient from a list when booking
 
 \- Put the app online (HTTPS, better login, separate user accounts)
 
 \- Automatic SMS or WhatsApp (needs a paid service)
+
+\- Delete the appointments\_old table when I am sure everything is fine
 
 \- Translate or retire the old app.py
 
