@@ -751,4 +751,6 @@ def unavailable():
 
 
 init_db()
-web.run(debug=True)
+
+if __name__ == "__main__":
+    web.run(debug=True)
