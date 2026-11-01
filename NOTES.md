@@ -36,13 +36,17 @@ This is my first real project while learning AI app development.
 
 \- WhatsApp link: opens a chat with the patient with the message already typed (I press send myself)
 
+\- Automatic backup of the database every time I start the server
+
 
 
 \## How to run
 
 1\. Open Git Bash and go to the folder: cd Desktop/clinic-app
 
-2\. Start the server: python web.py
+2\. Start the server with a backup first: python backup.py \&\& python web.py
+
+&#x20;  (\&\& means: run the second command only if the first one worked)
 
 3\. Open http://127.0.0.1:5000 in the browser and log in
 
@@ -65,6 +69,10 @@ This is my first real project while learning AI app development.
 \- web.py: the website (main file)
 
 \- clinic.db: the SQLite database with all appointments (never pushed to GitHub, \*.db is in .gitignore)
+
+\- backup.py: copies clinic.db into the backups folder with the date and time in the name, and keeps only the newest 10 copies
+
+\- backups/: the backup copies (never pushed to GitHub, they are .db files)
 
 \- migrate.py: one-time script that copied the old appointments.txt data into clinic.db (it stops if the database already has data)
 
@@ -99,6 +107,24 @@ This is my first real project while learning AI app development.
 \- Always put WHERE in UPDATE and DELETE, otherwise ALL rows change or disappear.
 
 \- After INSERT, UPDATE or DELETE call conn.commit(), otherwise the change is lost.
+
+
+
+\## Backup
+
+\- Run python backup.py (or start the server with python backup.py \&\& python web.py).
+
+\- It uses SQLite's own backup function, so it is safe even while the server is running.
+
+\- Backups are saved like backups/clinic-2026-11-01\_07-26-08.db (date and time in the name).
+
+\- Only the newest 10 backups are kept, older ones are deleted automatically (KEEP = 10 in backup.py).
+
+\- If I am in the wrong folder it says: clinic.db not found. Are you inside the clinic-app folder?
+
+\- To restore: close the server, rename the current clinic.db (for example to clinic-broken.db), copy a backup file to clinic.db, start the server again.
+
+\- The backups are on the same laptop. If the laptop breaks they are gone too, so sometimes copy one backup file to a USB drive or another safe place. Do not put them on GitHub (patient data).
 
 
 
@@ -140,9 +166,7 @@ This is my first real project while learning AI app development.
 
 \- The session secret key is created again every time the server starts, so everyone is logged out after a restart.
 
-\- Patient data (clinic.db, appointments.txt) must never be committed to GitHub. Check git status before git add . (no .db file should be listed).
-
-\- clinic.db has no automatic backup yet. Copy it somewhere safe from time to time.
+\- Patient data (clinic.db, backups, appointments.txt) must never be committed to GitHub. Check git status before git add . (no .db file and no backups folder should be listed).
 
 
 
@@ -166,7 +190,7 @@ This is my first real project while learning AI app development.
 
 \- Data files pushed to GitHub by mistake: git rm --cached file, then add the file to .gitignore
 
-\- Browser says site can't be reached: the server was stopped, run python web.py again
+\- Browser says site can't be reached: the server was stopped, run the start command again
 
 \- Environment variable not found: open a new Git Bash window after setx
 
@@ -190,21 +214,19 @@ git commit -m "message"
 
 git push
 
-(Run git status first and check that no .db file is listed.)
+(Run git status first and check that no .db file and no backups folder is listed.)
 
 
 
 \## Next ideas
 
-\- Make a backup copy of clinic.db automatically
-
 \- Save the date as a real date (YYYY-MM-DD) and sort in SQL with ORDER BY
+
+\- Add a patients table separate from appointments
 
 \- Put the app online (HTTPS, better login, separate user accounts)
 
 \- Automatic SMS or WhatsApp (needs a paid service)
-
-\- Add a patients table separate from appointments
 
 \- Translate or retire the old app.py
 
