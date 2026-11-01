@@ -247,15 +247,21 @@ def init_db():
     conn = connect()
     cur = conn.cursor()
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS appointments (
+    CREATE TABLE IF NOT EXISTS patients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
+        age TEXT,
+        gender TEXT,
+        phone TEXT
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER,
         doctor TEXT,
         date TEXT,
-        time TEXT,
-        gender TEXT,
-        age TEXT,
-        phone TEXT
+        time TEXT
     )
     """)
     conn.commit()
@@ -294,9 +300,13 @@ def row_to_show(row):
 def read_appointments():
     conn = connect()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT name, doctor, date, time, gender, age, phone, id FROM appointments ORDER BY date, time"
-    )
+    cur.execute("""
+        SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
+               patients.gender, patients.age, patients.phone, appointments.id
+        FROM appointments
+        JOIN patients ON appointments.patient_id = patients.id
+        ORDER BY appointments.date, appointments.time
+    """)
     rows = cur.fetchall()
     conn.close()
     return [row_to_show(row) for row in rows]
@@ -305,10 +315,13 @@ def read_appointments():
 def get_appointment(appointment_id):
     conn = connect()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT name, doctor, date, time, gender, age, phone, id FROM appointments WHERE id = ?",
-        (appointment_id,),
-    )
+    cur.execute("""
+        SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
+               patients.gender, patients.age, patients.phone, appointments.id
+        FROM appointments
+        JOIN patients ON appointments.patient_id = patients.id
+        WHERE appointments.id = ?
+    """, (appointment_id,))
     row = cur.fetchone()
     conn.close()
     if row is None:
@@ -319,9 +332,28 @@ def get_appointment(appointment_id):
 def add_appointment(name, doctor, date, time, gender, age, phone):
     conn = connect()
     cur = conn.cursor()
+
     cur.execute(
-        "INSERT INTO appointments (name, doctor, date, time, gender, age, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (name, doctor, date_to_db(date), time_to_db(time), gender, age, phone),
+        "SELECT id FROM patients WHERE LOWER(name) = LOWER(?) AND phone = ?",
+        (name, phone),
+    )
+    found = cur.fetchone()
+    if found is None:
+        cur.execute(
+            "INSERT INTO patients (name, age, gender, phone) VALUES (?, ?, ?, ?)",
+            (name, age, gender, phone),
+        )
+        patient_id = cur.lastrowid
+    else:
+        patient_id = found[0]
+        cur.execute(
+            "UPDATE patients SET age = ?, gender = ? WHERE id = ?",
+            (age, gender, patient_id),
+        )
+
+    cur.execute(
+        "INSERT INTO appointments (patient_id, doctor, date, time) VALUES (?, ?, ?, ?)",
+        (patient_id, doctor, date_to_db(date), time_to_db(time)),
     )
     conn.commit()
     conn.close()
