@@ -13,6 +13,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 DB_FILE = "clinic.db"
 CLINIC_TZ = os.environ.get("CLINIC_TZ", "Asia/Karachi")
+AI_ENABLED = os.environ.get("CLINIC_AI") == "1"
 
 MAX_FAILS = 5
 LOCK_SECONDS = 600
@@ -44,7 +45,9 @@ web.permanent_session_lifetime = timedelta(hours=8)
 
 DUMMY_HASH = generate_password_hash("dummy password for timing")
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+client = None
+if AI_ENABLED:
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 COMMON_STYLE = """
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -238,7 +241,7 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="date" value="{{ a[2] }}">
         <input type="hidden" name="time" value="{{ a[3] }}">
         <input type="hidden" name="phone" value="{{ a[6] }}">
-        <button type="submit">Reminder (AI)</button>
+        <button type="submit">{{ "Reminder (AI)" if ai_enabled else "Reminder" }}</button>
       </form>
       <form method="post" action="/unavailable" class="inline-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -555,7 +558,11 @@ def get_csrf():
 
 @web.context_processor
 def add_to_templates():
-    return {"csrf": get_csrf(), "current_user": session.get("user", "")}
+    return {
+        "csrf": get_csrf(),
+        "current_user": session.get("user", ""),
+        "ai_enabled": AI_ENABLED,
+    }
 
 
 @web.after_request
@@ -697,57 +704,90 @@ def delete():
     return redirect("/")
 
 
-@web.route("/reminder", methods=["POST"])
-def reminder():
-    question = (
-        "Write a short, polite reminder message for this appointment. "
-        "Patient: " + request.form["name"]
-        + ", Doctor: " + request.form["doctor"]
-        + ", Date: " + request.form["date"]
-        + ", Time: " + request.form["time"]
+def doctor_title(doctor):
+    name = doctor.strip()
+    low = name.lower()
+    if low.startswith("dr.") or low.startswith("dr ") or low.startswith("doctor "):
+        return name
+    return "Dr. " + name
+
+
+def plain_message(kind, name, doctor, date, time):
+    doctor = doctor_title(doctor)
+    if kind == "unavailable":
+        return (
+            "Hello " + name + ", we are sorry, " + doctor
+            + " is not available for your appointment on " + date
+            + " at " + time + ". Please contact the clinic to reschedule."
+        )
+    return (
+        "Hello " + name + ", this is a reminder of your appointment with "
+        + doctor + " on " + date + " at " + time
+        + ". Please contact the clinic if you need to change it."
     )
-    whatsapp_link = ""
+
+
+def write_message(kind, name, doctor, date, time):
+    fallback = plain_message(kind, name, doctor, date, time)
+    doctor = doctor_title(doctor)
+    if not AI_ENABLED or client is None:
+        return fallback
+
+    # The patient name is never sent to the AI. We send a marker and
+    # put the real name back ourselves.
+    marker = "[PATIENT]"
+    if kind == "unavailable":
+        task = (
+            "Write a short, polite message telling a patient that the doctor is "
+            "not available for this appointment and asking them to contact the "
+            "clinic to reschedule."
+        )
+        rule = "Do not invent a new date, time, phone number or reason."
+    else:
+        task = "Write a short, polite reminder message for this appointment."
+        rule = "Do not add any time, date or other details yourself."
+    question = (
+        task + " Start with the greeting 'Hello " + marker + "'. "
+        "Doctor: " + doctor + ", Date: " + date + ", Time: " + time
+    )
+    system = (
+        "You are a helpful clinic assistant. Always reply in English. "
+        "Use only the information given. " + rule + " "
+        "Write the text " + marker + " exactly as it is, it will be replaced later. "
+        "Write only the message and give no medical advice."
+    )
     try:
         answer = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are a helpful clinic assistant. Always reply in English. Use only the information given, do not add any time, date or other details yourself. Write only the message and give no medical advice."},
+                {"role": "system", "content": system},
                 {"role": "user", "content": question},
             ],
             model="openai/gpt-oss-20b",
         )
         message = answer.choices[0].message.content
-        whatsapp_link = "https://wa.me/" + request.form["phone"] + "?text=" + quote(message)
+        if message is None or message.strip() == "":
+            return fallback
+        return message.replace(marker, name)
     except Exception:
-        message = "Could not get a reply from the AI, please try again later"
+        return fallback
 
+
+def message_page(kind):
+    f = request.form
+    message = write_message(kind, f["name"], f["doctor"], f["date"], f["time"])
+    phone = "".join(ch for ch in f["phone"] if ch.isdigit())
+    whatsapp_link = "https://wa.me/" + phone + "?text=" + quote(message)
     return render_main(reminder=message, whatsapp_link=whatsapp_link)
+
+
+@web.route("/reminder", methods=["POST"])
+def reminder():
+    return message_page("reminder")
 
 
 @web.route("/unavailable", methods=["POST"])
 def unavailable():
-    question = (
-        "Write a short, polite message telling a patient that the doctor is "
-        "not available for this appointment and asking them to contact the "
-        "clinic to reschedule. Patient: " + request.form["name"]
-        + ", Doctor: " + request.form["doctor"]
-        + ", Date: " + request.form["date"]
-        + ", Time: " + request.form["time"]
-    )
-    whatsapp_link = ""
-    try:
-        answer = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You are a helpful clinic assistant. Always reply in English. Use only the information given. Do not invent a new date, time, phone number or reason. Write only the message and give no medical advice."},
-                {"role": "user", "content": question},
-            ],
-            model="openai/gpt-oss-20b",
-        )
-        message = answer.choices[0].message.content
-        whatsapp_link = "https://wa.me/" + request.form["phone"] + "?text=" + quote(message)
-    except Exception:
-        message = "Could not get a reply from the AI, please try again later"
-
-    return render_main(reminder=message, whatsapp_link=whatsapp_link)
+    return message_page("unavailable")
 
 
 init_db()
