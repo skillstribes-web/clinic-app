@@ -52,19 +52,19 @@ client = None
 if AI_ENABLED:
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-# Colours live here, in one place. Black and gold theme.
+# Colours live here, in one place. Dark teal theme.
 THEME_CSS = """
   :root {
     color-scheme: dark;
-    --bg: #0e0e0e;
-    --surface: #1a1a1a;
-    --field: #242424;
-    --border: #3a3a3a;
-    --text: #f1f1f1;
-    --muted: #b8b8b8;
-    --gold: #d4af37;
-    --gold-hover: #e6c35c;
-    --on-gold: #111111;
+    --bg: #0b1514;
+    --surface: #142523;
+    --field: #1b302d;
+    --border: #2f4d49;
+    --text: #eef5f3;
+    --muted: #a9c0bc;
+    --accent: #2fbfae;
+    --accent-hover: #5fd3c4;
+    --on-accent: #04201c;
     --danger: #c0392b;
     --danger-hover: #a93226;
     --error-text: #ff7b72;
@@ -80,23 +80,23 @@ COMMON_STYLE = (
     + THEME_CSS
     + """
   body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 15px; background: var(--bg); color: var(--text); }
-  h1 { color: var(--gold); }
+  h1 { color: var(--accent); }
   h2 { margin-top: 30px; }
-  a { color: var(--gold); }
+  a { color: var(--accent); }
   form p { margin: 8px 0; }
   input, select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 16px; background: var(--field); color: var(--text); }
   option { background: var(--field); color: var(--text); }
   input::placeholder { color: var(--muted); }
-  input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
-  button { padding: 8px 14px; border: none; border-radius: 4px; background: var(--gold); color: var(--on-gold); font-weight: bold; cursor: pointer; font-size: 15px; }
-  button:hover { background: var(--gold-hover); }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 8px 14px; border: none; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-weight: bold; cursor: pointer; font-size: 15px; }
+  button:hover { background: var(--accent-hover); }
   .red { background: var(--danger); color: white; }
   .red:hover { background: var(--danger-hover); }
   .error { color: var(--error-text); }
-  .message { border: 2px solid var(--gold); background: var(--surface); padding: 10px; margin: 10px 0; }
+  .message { border: 2px solid var(--accent); background: var(--surface); padding: 10px; margin: 10px 0; }
   .message-text { white-space: pre-wrap; }
   table { border-collapse: collapse; width: 100%; background: var(--surface); }
-  th { background: var(--gold); color: var(--on-gold); }
+  th { background: var(--accent); color: var(--on-accent); }
   th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
   td[data-label="Date"], td[data-label="Time"] { white-space: nowrap; }
   .inline-form { margin: 0; display: inline-block; }
@@ -132,11 +132,11 @@ LOGIN_PAGE = (
     + THEME_CSS
     + """
   body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: var(--bg); color: var(--text); }
-  h1 { color: var(--gold); }
+  h1 { color: var(--accent); }
   input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 16px; background: var(--field); color: var(--text); }
-  input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
-  button { margin-top: 12px; padding: 10px 14px; border: none; border-radius: 4px; background: var(--gold); color: var(--on-gold); font-weight: bold; cursor: pointer; font-size: 15px; }
-  button:hover { background: var(--gold-hover); }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { margin-top: 12px; padding: 10px 14px; border: none; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-weight: bold; cursor: pointer; font-size: 15px; }
+  button:hover { background: var(--accent-hover); }
   .error { color: var(--error-text); }
 </style>
 """
