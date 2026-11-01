@@ -2,17 +2,45 @@ import hmac
 import os
 import secrets
 import sqlite3
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from flask import Flask, redirect, render_template_string, request, session
 from groq import Groq
+from werkzeug.security import check_password_hash, generate_password_hash
 
 DB_FILE = "clinic.db"
 
+MAX_FAILS = 5
+LOCK_SECONDS = 600
+
+failed_logins = {}
+
+
+def get_secret_key():
+    from_env = os.environ.get("CLINIC_SECRET_KEY", "")
+    if from_env != "":
+        return from_env
+    if os.path.exists("secret.key"):
+        with open("secret.key", "r") as f:
+            saved = f.read().strip()
+        if saved != "":
+            return saved
+    new_key = secrets.token_hex(32)
+    with open("secret.key", "w") as f:
+        f.write(new_key)
+    return new_key
+
+
 web = Flask(__name__)
-web.secret_key = secrets.token_hex(32)
+web.secret_key = get_secret_key()
 web.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+web.config["SESSION_COOKIE_HTTPONLY"] = True
+web.config["SESSION_COOKIE_SECURE"] = os.environ.get("CLINIC_HTTPS") == "1"
+web.permanent_session_lifetime = timedelta(hours=8)
+
+DUMMY_HASH = generate_password_hash("dummy password for timing")
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
@@ -60,24 +88,32 @@ LOGIN_PAGE = """
 <style>
   body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
   h1 { color: #0b6e4f; }
-  input { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; box-sizing: border-box; }
-  button { margin-top: 12px; padding: 8px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; }
+  input { padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 16px; }
+  button { margin-top: 12px; padding: 10px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; font-size: 15px; }
   button:hover { background: #095a40; }
 </style>
 
 <h1>Clinic Login</h1>
+{% if no_users %}
+<p style="color: red;">There are no users yet. Run create_user.py first.</p>
+{% endif %}
 {% if error %}
 <p style="color: red;">{{ error }}</p>
 {% endif %}
 <form method="post" action="/login">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p>Username:</p>
+  <input name="username" autocomplete="username" autofocus>
   <p>Password:</p>
-  <input type="password" name="password" autofocus>
+  <input type="password" name="password" autocomplete="current-password">
   <button type="submit">Log in</button>
 </form>
 """
 
 PAGE = COMMON_STYLE + """
 <form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
   <button type="submit">Log out</button>
 </form>
 <h1>Clinic Appointment App</h1>
@@ -118,6 +154,7 @@ PAGE = COMMON_STYLE + """
 <p style="color: red;">{{ error }}</p>
 {% endif %}
 <form method="post" action="/">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
   <p>Patient name: <input name="name"></p>
   <p>Age: <input name="age" type="number" min="0" max="120"></p>
   <p>Gender:
@@ -188,10 +225,12 @@ PAGE = COMMON_STYLE + """
     <td data-label="Time">{{ a[3] }}</td>
     <td class="actions">
       <form method="post" action="/reschedule" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit">Reschedule</button>
       </form>
       <form method="post" action="/reminder" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="name" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="date" value="{{ a[2] }}">
@@ -200,6 +239,7 @@ PAGE = COMMON_STYLE + """
         <button type="submit">Reminder (AI)</button>
       </form>
       <form method="post" action="/unavailable" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="name" value="{{ a[0] }}">
         <input type="hidden" name="doctor" value="{{ a[1] }}">
         <input type="hidden" name="date" value="{{ a[2] }}">
@@ -208,6 +248,7 @@ PAGE = COMMON_STYLE + """
         <button type="submit">Doctor unavailable</button>
       </form>
       <form method="post" action="/delete" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit" class="red">Delete</button>
       </form>
@@ -235,6 +276,7 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
 {% endif %}
 
 <form method="post" action="/reschedule/save">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="id" value="{{ a[7] }}">
   <p>New date (e.g. 05-11-2026): <input name="new_date" value="{{ a[2] }}"></p>
   <p class="time-row">New time:
@@ -293,6 +335,13 @@ def init_db():
         doctor TEXT,
         date TEXT,
         time TEXT
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE COLLATE NOCASE,
+        password_hash TEXT
     )
     """)
     conn.commit()
@@ -492,12 +541,72 @@ def find_error(name, doctor, date, time, gender, age, phone):
     return find_schedule_error(doctor, date, time)
 
 
+def get_csrf():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_hex(16)
+    return session["csrf"]
+
+
+@web.context_processor
+def add_to_templates():
+    return {"csrf": get_csrf(), "current_user": session.get("user", "")}
+
+
+@web.after_request
+def add_safety_headers(response):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @web.before_request
-def require_login():
-    if request.endpoint in ("login", "static"):
+def protect():
+    if request.endpoint == "static":
         return None
-    if not session.get("logged_in"):
+
+    if request.method == "POST":
+        sent = request.form.get("csrf", "")
+        real = session.get("csrf", "")
+        if real == "" or not hmac.compare_digest(sent, real):
+            return '<p>This page expired. <a href="/">Go back</a> and try again.</p>', 400
+
+    if request.endpoint != "login" and not session.get("user"):
         return redirect("/login")
+    return None
+
+
+def is_locked(key):
+    now = time.time()
+    recent = [t for t in failed_logins.get(key, []) if now - t < LOCK_SECONDS]
+    failed_logins[key] = recent
+    return len(recent) >= MAX_FAILS
+
+
+def record_failure(key):
+    failed_logins.setdefault(key, []).append(time.time())
+
+
+def count_users():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    number = cur.fetchone()[0]
+    conn.close()
+    return number
+
+
+def check_login(username, password):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT username, password_hash FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        check_password_hash(DUMMY_HASH, password)
+        return None
+    if check_password_hash(row[1], password):
+        return row[0]
     return None
 
 
@@ -505,16 +614,22 @@ def require_login():
 def login():
     error = ""
     if request.method == "POST":
-        real_password = os.environ.get("CLINIC_PASSWORD", "")
-        typed_password = request.form["password"]
-        if real_password == "":
-            error = "No password is set on this computer"
-        elif hmac.compare_digest(typed_password.encode(), real_password.encode()):
-            session["logged_in"] = True
-            return redirect("/")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        key = (request.remote_addr or "unknown") + "|" + username.lower()
+        if is_locked(key):
+            error = "Too many wrong attempts. Please wait 10 minutes and try again."
         else:
-            error = "Wrong password"
-    return render_template_string(LOGIN_PAGE, error=error)
+            real_name = check_login(username, password)
+            if real_name is not None:
+                failed_logins.pop(key, None)
+                session.clear()
+                session["user"] = real_name
+                session.permanent = True
+                return redirect("/")
+            record_failure(key)
+            error = "Wrong username or password"
+    return render_template_string(LOGIN_PAGE, error=error, no_users=(count_users() == 0))
 
 
 @web.route("/logout", methods=["POST"])
