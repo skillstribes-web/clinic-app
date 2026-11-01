@@ -166,7 +166,7 @@ PAGE = COMMON_STYLE + """
   <button type="submit">Log out</button>
 </form>
 <h1>{{ clinic_name }}</h1>
-<p><a href="/patients">Patients</a></p>
+<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a></p>
 
 {% if reminder %}
 <div class="message">
@@ -215,7 +215,17 @@ PAGE = COMMON_STYLE + """
     </select>
   </p>
   <p>Phone (country code first, digits only): <input name="phone" placeholder="e.g. 15551234567"></p>
-  <p>Doctor name: <input name="doctor"></p>
+  <p>Doctor:
+    {% if doctors %}
+    <select name="doctor">
+      {% for d in doctors %}
+      <option>{{ d }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <span class="error">No doctors yet.</span> <a href="/doctors">Add a doctor first</a>
+    {% endif %}
+  </p>
   <p>Date (e.g. 05-11-2026): <input name="date"></p>
   <p class="time-row">Time:
     <select name="hour">
@@ -281,7 +291,7 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit">Reschedule</button>
       </form>
-      <form method="post" action="/status" class="inline-form">
+      <form method="post" action="/status" class="inline-form keep-scroll">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <select name="status">
@@ -309,7 +319,7 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="phone" value="{{ a[6] }}">
         <button type="submit">Doctor unavailable</button>
       </form>
-      <form method="post" action="/delete" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
+      <form method="post" action="/delete" class="inline-form keep-scroll" onsubmit="return confirm('Are you sure you want to delete this appointment?')">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit" class="red">Delete</button>
@@ -326,6 +336,25 @@ PAGE = COMMON_STYLE + """
   <p>No appointments saved yet</p>
   {% endif %}
 {% endif %}
+
+<script>
+// After Delete or Set status the page reloads; put the reader back where they were.
+(function () {
+  try {
+    var saved = sessionStorage.getItem("scrollY");
+    if (saved !== null) {
+      sessionStorage.removeItem("scrollY");
+      window.scrollTo(0, parseInt(saved, 10));
+    }
+    document.addEventListener("submit", function (e) {
+      if (e.defaultPrevented) { return; }
+      if (e.target.classList && e.target.classList.contains("keep-scroll")) {
+        sessionStorage.setItem("scrollY", String(window.scrollY));
+      }
+    });
+  } catch (err) {}
+})();
+</script>
 """
 
 PATIENTS_PAGE = COMMON_STYLE + """
@@ -366,6 +395,56 @@ PATIENTS_PAGE = COMMON_STYLE + """
 </table>
 {% else %}
 <p>No patients found.</p>
+{% endif %}
+"""
+
+DOCTORS_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>Doctors</h1>
+<p><a href="/">&larr; Back to appointments</a></p>
+
+<h2>Add a doctor</h2>
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+<form method="post" action="/doctors/add">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p>Name as it should appear (e.g. Dr. Waseem Khan): <input name="name" maxlength="60"></p>
+  <button type="submit">Add doctor</button>
+</form>
+
+<h2>Doctors in the list</h2>
+{% if doctors %}
+<table>
+  <thead>
+  <tr><th>Doctor</th><th>Appointments</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for d in doctors %}
+  <tr>
+    <td data-label="Doctor">{{ d[1] }}</td>
+    <td data-label="Appointments">{{ d[2] }}</td>
+    <td class="actions">
+      {% if d[2] == 0 %}
+      <form method="post" action="/doctors/delete" class="inline-form" onsubmit="return confirm('Remove this doctor from the list?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="id" value="{{ d[0] }}">
+        <button type="submit" class="red">Remove</button>
+      </form>
+      {% else %}
+      Has appointments
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No doctors yet. Add the first one above.</p>
 {% endif %}
 """
 
@@ -451,6 +530,18 @@ def init_db():
         password_hash TEXT
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS doctors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE COLLATE NOCASE
+    )
+    """)
+    cur.execute("SELECT COUNT(*) FROM doctors")
+    if cur.fetchone()[0] == 0:
+        cur.execute(
+            "INSERT OR IGNORE INTO doctors (name) "
+            "SELECT DISTINCT TRIM(doctor) FROM appointments WHERE TRIM(doctor) != ''"
+        )
     cur.execute("PRAGMA table_info(appointments)")
     columns = [row[1] for row in cur.fetchall()]
     if "status" not in columns:
@@ -606,6 +697,50 @@ def read_patients():
     return result
 
 
+def read_doctors():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT doctors.id, doctors.name, COUNT(appointments.id)
+        FROM doctors
+        LEFT JOIN appointments ON appointments.doctor = doctors.name COLLATE NOCASE
+        GROUP BY doctors.id
+        ORDER BY doctors.name COLLATE NOCASE
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def add_doctor(name):
+    conn = connect()
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO doctors (name) VALUES (?)", (name,))
+        conn.commit()
+        added = True
+    except sqlite3.IntegrityError:
+        added = False
+    conn.close()
+    return added
+
+
+def delete_doctor(doctor_id):
+    # Only a doctor with no appointments can be removed.
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM doctors
+        WHERE id = ?
+        AND NOT EXISTS (
+            SELECT 1 FROM appointments
+            WHERE appointments.doctor = doctors.name COLLATE NOCASE
+        )
+    """, (doctor_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_id(form):
     try:
         return int(form["id"])
@@ -633,6 +768,7 @@ def render_main(error="", reminder="", whatsapp_link="", q=""):
         PAGE,
         appointments=shown,
         today_appointments=today_appointments,
+        doctors=[d[1] for d in read_doctors()],
         today_text=today_text,
         total=len(all_appointments),
         q=q.strip(),
@@ -672,6 +808,9 @@ def find_schedule_error(doctor, date, time, skip_id=None):
 def find_error(name, doctor, date, time, gender, age, phone):
     if name == "" or doctor == "" or date == "" or time == "" or gender == "" or age == "" or phone == "":
         return "Error: no field can be empty"
+
+    if doctor.lower() not in [d[1].lower() for d in read_doctors()]:
+        return "Error: please choose a doctor from the list"
 
     if gender not in ("Male", "Female"):
         return "Error: please choose Male or Female"
@@ -797,7 +936,7 @@ def home():
     error = ""
     if request.method == "POST":
         name = request.form["name"].strip()
-        doctor = request.form["doctor"].strip()
+        doctor = request.form.get("doctor", "").strip()
         date = request.form["date"].strip()
         time = build_time(request.form)
         gender = request.form["gender"].strip()
@@ -808,6 +947,35 @@ def home():
             add_appointment(name, doctor, date, time, gender, age, phone)
             return redirect("/")
     return render_main(error=error, q=request.args.get("q", ""))
+
+
+def render_doctors(error=""):
+    return render_template_string(DOCTORS_PAGE, doctors=read_doctors(), error=error)
+
+
+@web.route("/doctors")
+def doctors():
+    return render_doctors()
+
+
+@web.route("/doctors/add", methods=["POST"])
+def doctors_add():
+    name = request.form.get("name", "").strip()
+    if name == "":
+        return render_doctors(error="Error: please write the doctor's name")
+    if len(name) > 60:
+        return render_doctors(error="Error: the name can be 60 letters at most")
+    if not add_doctor(name):
+        return render_doctors(error="Error: this doctor is already in the list")
+    return redirect("/doctors")
+
+
+@web.route("/doctors/delete", methods=["POST"])
+def doctors_delete():
+    doctor_id = get_id(request.form)
+    if doctor_id is not None:
+        delete_doctor(doctor_id)
+    return redirect("/doctors")
 
 
 @web.route("/patients")
