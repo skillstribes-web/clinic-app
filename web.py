@@ -14,6 +14,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 DB_FILE = "clinic.db"
 CLINIC_TZ = os.environ.get("CLINIC_TZ", "Asia/Karachi")
 AI_ENABLED = os.environ.get("CLINIC_AI") == "1"
+CLINIC_NAME = os.environ.get("CLINIC_NAME", "Clinic Appointment App")
 
 STATUSES = ["Scheduled", "Done", "No-show", "Cancelled"]
 
@@ -51,21 +52,52 @@ client = None
 if AI_ENABLED:
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-COMMON_STYLE = """
+# Colours live here, in one place. Black and gold theme.
+THEME_CSS = """
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e0e;
+    --surface: #1a1a1a;
+    --field: #242424;
+    --border: #3a3a3a;
+    --text: #f1f1f1;
+    --muted: #b8b8b8;
+    --gold: #d4af37;
+    --gold-hover: #e6c35c;
+    --on-gold: #111111;
+    --danger: #c0392b;
+    --danger-hover: #a93226;
+    --error-text: #ff7b72;
+  }
+"""
+
+COMMON_STYLE = (
+    """
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ clinic_name }}</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
-  h1 { color: #0b6e4f; }
+"""
+    + THEME_CSS
+    + """
+  body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 15px; background: var(--bg); color: var(--text); }
+  h1 { color: var(--gold); }
   h2 { margin-top: 30px; }
+  a { color: var(--gold); }
   form p { margin: 8px 0; }
-  input, select { padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 16px; }
-  button { padding: 8px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; font-size: 15px; }
-  button:hover { background: #095a40; }
-  .red { background: #c0392b; }
-  .red:hover { background: #962d22; }
-  table { border-collapse: collapse; width: 100%; background: white; }
-  th { background: #0b6e4f; color: white; }
-  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  input, select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 16px; background: var(--field); color: var(--text); }
+  option { background: var(--field); color: var(--text); }
+  input::placeholder { color: var(--muted); }
+  input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+  button { padding: 8px 14px; border: none; border-radius: 4px; background: var(--gold); color: var(--on-gold); font-weight: bold; cursor: pointer; font-size: 15px; }
+  button:hover { background: var(--gold-hover); }
+  .red { background: var(--danger); color: white; }
+  .red:hover { background: var(--danger-hover); }
+  .error { color: var(--error-text); }
+  .message { border: 2px solid var(--gold); background: var(--surface); padding: 10px; margin: 10px 0; }
+  .message-text { white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; background: var(--surface); }
+  th { background: var(--gold); color: var(--on-gold); }
+  th, td { border: 1px solid var(--border); padding: 8px; text-align: left; }
   td[data-label="Date"], td[data-label="Time"] { white-space: nowrap; }
   .inline-form { margin: 0; display: inline-block; }
   .inline-form button { margin: 3px 3px 3px 0; }
@@ -80,32 +112,42 @@ COMMON_STYLE = """
     table, thead, tbody, tr, td { display: block; }
     table { background: transparent; }
     thead { display: none; }
-    tr { margin-bottom: 14px; border: 1px solid #ddd; border-radius: 6px; background: white; }
-    td { display: flex; justify-content: space-between; gap: 12px; border: none; border-bottom: 1px solid #eee; padding: 8px 12px; }
-    td::before { content: attr(data-label); font-weight: bold; color: #555; }
+    tr { margin-bottom: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+    td { display: flex; justify-content: space-between; gap: 12px; border: none; border-bottom: 1px solid var(--border); padding: 8px 12px; }
+    td::before { content: attr(data-label); font-weight: bold; color: var(--muted); }
     td:last-child { border-bottom: none; }
     td.actions { display: block; }
     td.actions::before { content: none; }
   }
 </style>
 """
+)
 
-LOGIN_PAGE = """
+LOGIN_PAGE = (
+    """
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ clinic_name }}</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: #f4f7fa; color: #222; }
-  h1 { color: #0b6e4f; }
-  input { padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 16px; }
-  button { margin-top: 12px; padding: 10px 14px; border: none; border-radius: 4px; background: #0b6e4f; color: white; cursor: pointer; font-size: 15px; }
-  button:hover { background: #095a40; }
+"""
+    + THEME_CSS
+    + """
+  body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 15px; background: var(--bg); color: var(--text); }
+  h1 { color: var(--gold); }
+  input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 16px; background: var(--field); color: var(--text); }
+  input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+  button { margin-top: 12px; padding: 10px 14px; border: none; border-radius: 4px; background: var(--gold); color: var(--on-gold); font-weight: bold; cursor: pointer; font-size: 15px; }
+  button:hover { background: var(--gold-hover); }
+  .error { color: var(--error-text); }
 </style>
-
-<h1>Clinic Login</h1>
+"""
+    + """
+<h1>{{ clinic_name }}</h1>
+<p>Staff login</p>
 {% if no_users %}
-<p style="color: red;">There are no users yet. Run create_user.py first.</p>
+<p class="error">There are no users yet. Run create_user.py first.</p>
 {% endif %}
 {% if error %}
-<p style="color: red;">{{ error }}</p>
+<p class="error">{{ error }}</p>
 {% endif %}
 <form method="post" action="/login">
   <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -115,7 +157,7 @@ LOGIN_PAGE = """
   <input type="password" name="password" autocomplete="current-password">
   <button type="submit">Log in</button>
 </form>
-"""
+""")
 
 PAGE = COMMON_STYLE + """
 <form method="post" action="/logout" style="float: right; margin: 0;">
@@ -123,12 +165,12 @@ PAGE = COMMON_STYLE + """
   <span style="margin-right: 8px;">{{ current_user }}</span>
   <button type="submit">Log out</button>
 </form>
-<h1>Clinic Appointment App</h1>
+<h1>{{ clinic_name }}</h1>
 <p><a href="/patients">Patients</a></p>
 
 {% if reminder %}
-<div style="border: 2px solid green; padding: 10px; margin: 10px 0; white-space: pre-wrap;">
-  <b>Message:</b><br>{{ reminder }}
+<div class="message">
+  <b>Message:</b><br><span class="message-text">{{ reminder }}</span>
   {% if whatsapp_link %}
   <p><a href="{{ whatsapp_link }}" target="_blank">Open in WhatsApp</a></p>
   {% endif %}
@@ -160,7 +202,7 @@ PAGE = COMMON_STYLE + """
 
 <h2>New appointment</h2>
 {% if error %}
-<p style="color: red;">{{ error }}</p>
+<p class="error">{{ error }}</p>
 {% endif %}
 <form method="post" action="/">
   <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -333,7 +375,7 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
 <p><b>Current date and time:</b> {{ a[2] }} at {{ a[3] }}</p>
 
 {% if error %}
-<p style="color: red;">{{ error }}</p>
+<p class="error">{{ error }}</p>
 {% endif %}
 
 <form method="post" action="/reschedule/save">
@@ -660,6 +702,7 @@ def add_to_templates():
         "current_user": session.get("user", ""),
         "ai_enabled": AI_ENABLED,
         "statuses": STATUSES,
+        "clinic_name": CLINIC_NAME,
     }
 
 
