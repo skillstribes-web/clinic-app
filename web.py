@@ -15,6 +15,8 @@ DB_FILE = "clinic.db"
 CLINIC_TZ = os.environ.get("CLINIC_TZ", "Asia/Karachi")
 AI_ENABLED = os.environ.get("CLINIC_AI") == "1"
 
+STATUSES = ["Scheduled", "Done", "No-show", "Cancelled"]
+
 MAX_FAILS = 5
 LOCK_SECONDS = 600
 
@@ -137,7 +139,7 @@ PAGE = COMMON_STYLE + """
 {% if today_appointments %}
 <table>
   <thead>
-  <tr><th>Time</th><th>Patient</th><th>Age</th><th>Doctor</th><th>Phone</th></tr>
+  <tr><th>Time</th><th>Patient</th><th>Age</th><th>Doctor</th><th>Phone</th><th>Status</th></tr>
   </thead>
   <tbody>
   {% for a in today_appointments %}
@@ -147,6 +149,7 @@ PAGE = COMMON_STYLE + """
     <td data-label="Age">{{ a[5] }}</td>
     <td data-label="Doctor">{{ a[1] }}</td>
     <td data-label="Phone">{{ a[6] }}</td>
+    <td data-label="Status">{{ a[8] }}</td>
   </tr>
   {% endfor %}
   </tbody>
@@ -217,7 +220,7 @@ PAGE = COMMON_STYLE + """
 {% if appointments %}
 <table>
   <thead>
-  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th></th></tr>
+  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th>Status</th><th></th></tr>
   </thead>
   <tbody>
   {% for a in appointments %}
@@ -229,11 +232,22 @@ PAGE = COMMON_STYLE + """
     <td data-label="Doctor">{{ a[1] }}</td>
     <td data-label="Date">{{ a[2] }}</td>
     <td data-label="Time">{{ a[3] }}</td>
+    <td data-label="Status">{{ a[8] }}</td>
     <td class="actions">
       <form method="post" action="/reschedule" class="inline-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
         <button type="submit">Reschedule</button>
+      </form>
+      <form method="post" action="/status" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="id" value="{{ a[7] }}">
+        <select name="status">
+          {% for s in statuses %}
+          <option{% if s == a[8] %} selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Set status</button>
       </form>
       <form method="post" action="/reminder" class="inline-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -395,6 +409,10 @@ def init_db():
         password_hash TEXT
     )
     """)
+    cur.execute("PRAGMA table_info(appointments)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "status" not in columns:
+        cur.execute("ALTER TABLE appointments ADD COLUMN status TEXT DEFAULT 'Scheduled'")
     conn.commit()
     conn.close()
 
@@ -433,7 +451,8 @@ def read_appointments():
     cur = conn.cursor()
     cur.execute("""
         SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
-               patients.gender, patients.age, patients.phone, appointments.id
+               patients.gender, patients.age, patients.phone, appointments.id,
+               COALESCE(appointments.status, 'Scheduled')
         FROM appointments
         JOIN patients ON appointments.patient_id = patients.id
         ORDER BY appointments.date, appointments.time
@@ -448,7 +467,8 @@ def get_appointment(appointment_id):
     cur = conn.cursor()
     cur.execute("""
         SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
-               patients.gender, patients.age, patients.phone, appointments.id
+               patients.gender, patients.age, patients.phone, appointments.id,
+               COALESCE(appointments.status, 'Scheduled')
         FROM appointments
         JOIN patients ON appointments.patient_id = patients.id
         WHERE appointments.id = ?
@@ -496,6 +516,17 @@ def update_appointment_time(appointment_id, date, time):
     cur.execute(
         "UPDATE appointments SET date = ?, time = ? WHERE id = ?",
         (date_to_db(date), time_to_db(time), appointment_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_status(appointment_id, status):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE appointments SET status = ? WHERE id = ?",
+        (status, appointment_id),
     )
     conn.commit()
     conn.close()
@@ -552,7 +583,7 @@ def render_main(error="", reminder="", whatsapp_link="", q=""):
     search = q.strip().lower()
     shown = []
     for a in all_appointments:
-        text = " ".join([a[0], a[1], a[2], a[6]]).lower()
+        text = " ".join([a[0], a[1], a[2], a[6], a[8]]).lower()
         if search in text:
             shown.append(a)
 
@@ -590,7 +621,7 @@ def find_schedule_error(doctor, date, time, skip_id=None):
             and a[2] == date
             and a[3].lower() == time.lower()
         )
-        if same_slot and a[7] != skip_id:
+        if same_slot and a[7] != skip_id and a[8] != "Cancelled":
             return "Error: this doctor already has an appointment at that date and time"
 
     return ""
@@ -628,6 +659,7 @@ def add_to_templates():
         "csrf": get_csrf(),
         "current_user": session.get("user", ""),
         "ai_enabled": AI_ENABLED,
+        "statuses": STATUSES,
     }
 
 
@@ -774,6 +806,15 @@ def reschedule_save():
         return render_template_string(RESCHEDULE_PAGE, a=a, error=error)
 
     update_appointment_time(a[7], new_date, new_time)
+    return redirect("/")
+
+
+@web.route("/status", methods=["POST"])
+def status():
+    appointment_id = get_id(request.form)
+    new_status = request.form.get("status", "")
+    if appointment_id is not None and new_status in STATUSES:
+        update_status(appointment_id, new_status)
     return redirect("/")
 
 
