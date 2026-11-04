@@ -207,7 +207,7 @@ PAGE = COMMON_STYLE + """
   <button type="submit">Log out</button>
 </form>
 <h1>{{ clinic_name }}</h1>
-<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a></p>
+<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a> &nbsp;|&nbsp; <a href="/inbox">WhatsApp{% if inbox_count %} ({{ inbox_count }} need staff){% endif %}</a></p>
 
 {% if reminder %}
 <div class="message">
@@ -678,6 +678,83 @@ RESCHEDULE_PAGE = COMMON_STYLE + """
   <button type="submit">Save new date and time</button>
   &nbsp; <a href="/">Cancel</a>
 </form>
+"""
+
+
+INBOX_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>WhatsApp</h1>
+<p><a href="/">&larr; Back to appointments</a></p>
+<p>Messages from patients on WhatsApp. "Needs staff" means the assistant told the patient that the staff will contact them.</p>
+
+{% if threads %}
+<table>
+  <thead>
+  <tr><th>Phone</th><th>Patient name</th><th>Last message</th><th>Time</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for t in threads %}
+  <tr>
+    <td data-label="Phone">{{ t.phone }}</td>
+    <td data-label="Patient name">{{ t.name or "-" }}</td>
+    <td data-label="Last message">{{ t.last_text[:80] }}</td>
+    <td data-label="Time">{{ t.last_time }}</td>
+    <td data-label="Status">{% if t.needs_staff %}<b class="error">Needs staff</b>{% else %}OK{% endif %}</td>
+    <td class="actions"><a href="/inbox/{{ t.phone }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No WhatsApp messages yet.</p>
+{% endif %}
+"""
+
+THREAD_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>WhatsApp: {{ phone }}</h1>
+<p><a href="/inbox">&larr; Back to WhatsApp</a></p>
+{% if name %}<p><b>Patient in the app:</b> {{ name }}</p>{% endif %}
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+{% for m in messages %}
+<div class="message" {% if m.role != "patient" %}style="margin-left: 40px;"{% endif %}>
+  <small>{{ m.who }} &middot; {{ m.time }}</small><br>
+  <span class="message-text">{{ m.text }}</span>
+</div>
+{% endfor %}
+
+{% if needs_staff %}
+<form method="post" action="/inbox/done" style="margin: 12px 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="phone" value="{{ phone }}">
+  <button type="submit">Mark as handled</button>
+</form>
+{% endif %}
+
+<h2>Reply as staff</h2>
+{% if can_reply %}
+<form method="post" action="/inbox/send">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="phone" value="{{ phone }}">
+  <p><textarea name="text" rows="4" maxlength="1000" style="width: 100%; box-sizing: border-box; padding: 8px; font-size: 16px; background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: 4px;"></textarea></p>
+  <button type="submit">Send on WhatsApp</button>
+</form>
+{% else %}
+<p>The patient's last message is more than 24 hours old, so WhatsApp does not allow a free reply now.
+Please call the patient{% if phone %} ({{ phone }}){% endif %}, or wait until they message again.</p>
+{% endif %}
 """
 
 
@@ -1190,6 +1267,7 @@ def add_to_templates():
         "ai_enabled": AI_ENABLED,
         "statuses": STATUSES,
         "clinic_name": CLINIC_NAME,
+        "inbox_count": inbox_count() if session.get("user") else 0,
     }
 
 
@@ -1670,6 +1748,8 @@ def whatsapp_reply_for(phone):
 
     messages = [{"role": "system", "content": agent_instructions()}]
     for role, text in recent_whatsapp_messages(phone):
+        if role == "handled":
+            continue
         if role == "patient":
             messages.append({"role": "user", "content": text})
         else:
@@ -1735,6 +1815,159 @@ def whatsapp_webhook():
 
     # Always answer 200 quickly, otherwise Meta keeps sending the same message again.
     return "OK", 200
+
+
+# ---------------- WhatsApp inbox for staff ----------------
+
+STAFF_WORDS = ("staff will", "will contact", "will confirm", "will reply", "will get back", "will call")
+
+
+def to_clinic_time(utc_text):
+    try:
+        t = datetime.strptime(utc_text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return utc_text or ""
+    return t.astimezone(ZoneInfo(CLINIC_TZ)).strftime("%d-%m-%Y %I:%M %p")
+
+
+def patient_name_for(phone):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM patients WHERE phone = ? ORDER BY id DESC LIMIT 1", (phone,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else ""
+
+
+def thread_needs_staff(rows):
+    # rows: list of (role, text), oldest first.
+    for role, text in reversed(rows):
+        if role in ("staff", "handled"):
+            return False
+        if role == "clinic":
+            low = text.lower()
+            return any(w in low for w in STAFF_WORDS)
+    # Only patient messages and no answer at all.
+    return len(rows) > 0
+
+
+def read_threads():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT phone, role, text, created FROM whatsapp_messages ORDER BY id")
+    rows = cur.fetchall()
+    conn.close()
+    by_phone = {}
+    for phone, role, text, created in rows:
+        by_phone.setdefault(phone, []).append((role, text, created))
+    threads = []
+    for phone, items in by_phone.items():
+        shown = [i for i in items if i[0] != "handled"]
+        last = shown[-1] if shown else items[-1]
+        threads.append({
+            "phone": phone,
+            "name": patient_name_for(phone),
+            "last_text": last[1],
+            "last_time": to_clinic_time(last[2]),
+            "sort": items[-1][2],
+            "needs_staff": thread_needs_staff([(i[0], i[1]) for i in items]),
+        })
+    needs = [t for t in threads if t["needs_staff"]]
+    rest = [t for t in threads if not t["needs_staff"]]
+    needs.sort(key=lambda t: t["sort"], reverse=True)
+    rest.sort(key=lambda t: t["sort"], reverse=True)
+    return needs + rest
+
+
+def inbox_count():
+    try:
+        return len([t for t in read_threads() if t["needs_staff"]])
+    except sqlite3.Error:
+        return 0
+
+
+def read_thread(phone):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT role, text, created FROM whatsapp_messages WHERE phone = ? ORDER BY id", (phone,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def last_patient_time(rows):
+    for role, text, created in reversed(rows):
+        if role == "patient":
+            try:
+                return datetime.strptime(created, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
+    return None
+
+
+def render_thread(phone, error=""):
+    rows = read_thread(phone)
+    who = {"patient": "Patient", "clinic": "Assistant (AI)", "staff": "Staff"}
+    messages = [
+        {"role": r, "who": who.get(r, r), "text": t, "time": to_clinic_time(c)}
+        for r, t, c in rows if r != "handled"
+    ]
+    last = last_patient_time(rows)
+    can_reply = last is not None and datetime.now(timezone.utc) - last < timedelta(hours=24)
+    return render_template_string(
+        THREAD_PAGE,
+        phone=phone,
+        name=patient_name_for(phone),
+        messages=messages,
+        needs_staff=thread_needs_staff([(r, t) for r, t, c in rows]),
+        can_reply=can_reply,
+        error=error,
+    )
+
+
+def clean_phone(text):
+    return "".join(ch for ch in (text or "") if ch.isdigit())[:15]
+
+
+@web.route("/inbox")
+def inbox():
+    return render_template_string(INBOX_PAGE, threads=read_threads())
+
+
+@web.route("/inbox/<phone>")
+def inbox_thread(phone):
+    phone = clean_phone(phone)
+    if phone == "" or not read_thread(phone):
+        return redirect("/inbox")
+    return render_thread(phone)
+
+
+@web.route("/inbox/send", methods=["POST"])
+def inbox_send():
+    phone = clean_phone(request.form.get("phone"))
+    text = request.form.get("text", "").strip()[:1000]
+    rows = read_thread(phone) if phone else []
+    if not rows:
+        return redirect("/inbox")
+    if text == "":
+        return render_thread(phone, error="Error: please write a message first")
+    last = last_patient_time(rows)
+    if last is None or datetime.now(timezone.utc) - last >= timedelta(hours=24):
+        return render_thread(phone, error="Error: more than 24 hours since the patient's last message")
+    if not send_whatsapp_text(phone, text):
+        return render_thread(phone, error="Error: the message could not be sent. Please try again.")
+    save_whatsapp_message(None, phone, "staff", text)
+    return redirect("/inbox/" + phone)
+
+
+@web.route("/inbox/done", methods=["POST"])
+def inbox_done():
+    phone = clean_phone(request.form.get("phone"))
+    if phone and read_thread(phone):
+        save_whatsapp_message(None, phone, "handled", "Marked as handled by " + session.get("user", "staff"))
+    return redirect("/inbox/" + phone if phone else "/inbox")
 
 
 init_db()
