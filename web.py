@@ -1,9 +1,12 @@
+import hashlib
 import hmac
+import json
 import os
 import secrets
 import sqlite3
 import time
 from datetime import datetime, timedelta
+import urllib.request
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -15,6 +18,13 @@ DB_FILE = "clinic.db"
 CLINIC_TZ = os.environ.get("CLINIC_TZ", "Asia/Karachi")
 AI_ENABLED = os.environ.get("CLINIC_AI") == "1"
 CLINIC_NAME = os.environ.get("CLINIC_NAME", "Clinic Appointment App")
+
+# WhatsApp settings. All four come from the server settings, never from this file.
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
+GRAPH_URL = "https://graph.facebook.com/v25.0/"
 
 STATUSES = ["Scheduled", "Done", "No-show", "Cancelled"]
 
@@ -1171,6 +1181,11 @@ def protect():
     if request.endpoint == "static":
         return None
 
+    # Meta calls this page from outside, with no login and no form.
+    # It has its own check (the signature) inside whatsapp_webhook.
+    if request.endpoint == "whatsapp_webhook":
+        return None
+
     if request.method == "POST":
         sent = request.form.get("csrf", "")
         real = session.get("csrf", "")
@@ -1505,6 +1520,97 @@ def reminder():
 @web.route("/unavailable", methods=["POST"])
 def unavailable():
     return message_page("unavailable")
+
+
+# ---------------- WhatsApp ----------------
+
+
+def whatsapp_signature_ok(body, header):
+    # Meta signs every message with the App Secret. A fake sender cannot do this.
+    if WHATSAPP_APP_SECRET == "" or not header.startswith("sha256="):
+        return False
+    expected = hmac.new(WHATSAPP_APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, header[len("sha256="):])
+
+
+def send_whatsapp_text(to_number, text):
+    if WHATSAPP_TOKEN == "" or WHATSAPP_PHONE_ID == "":
+        print("WhatsApp: token or phone ID is missing, reply not sent")
+        return False
+    data = json.dumps({
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": text},
+    }).encode()
+    req = urllib.request.Request(
+        GRAPH_URL + WHATSAPP_PHONE_ID + "/messages",
+        data=data,
+        headers={
+            "Authorization": "Bearer " + WHATSAPP_TOKEN,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            response.read()
+        return True
+    except Exception as e:
+        print("WhatsApp: sending failed:", e)
+        return False
+
+
+def whatsapp_reply_for(text):
+    # Step 2: a simple fixed reply. In Step 3 the AI agent will answer here.
+    return (
+        "Thank you for contacting " + CLINIC_NAME + ". "
+        "We received your message: \"" + text + "\". "
+        "Our team will reply soon."
+    )
+
+
+@web.route("/whatsapp", methods=["GET", "POST"])
+def whatsapp_webhook():
+    # 1) Meta checks the address once, when you save it in the dashboard.
+    if request.method == "GET":
+        mode = request.args.get("hub.mode", "")
+        token = request.args.get("hub.verify_token", "")
+        challenge = request.args.get("hub.challenge", "")
+        if (
+            mode == "subscribe"
+            and WHATSAPP_VERIFY_TOKEN != ""
+            and hmac.compare_digest(token, WHATSAPP_VERIFY_TOKEN)
+        ):
+            return challenge, 200
+        return "Forbidden", 403
+
+    # 2) A new message (or a delivery update) arrives.
+    body = request.get_data()
+    if not whatsapp_signature_ok(body, request.headers.get("X-Hub-Signature-256", "")):
+        return "Forbidden", 403
+
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return "OK", 200
+
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            # "statuses" (sent, delivered, read) also come here; we only answer "messages".
+            for message in value.get("messages", []):
+                sender = message.get("from", "")
+                if message.get("type") == "text":
+                    text = message.get("text", {}).get("body", "").strip()
+                    reply = whatsapp_reply_for(text[:500])
+                else:
+                    reply = "Sorry, for now we can only read text messages. Please write your message."
+                if sender != "":
+                    send_whatsapp_text(sender, reply)
+
+    # Always answer 200 quickly, otherwise Meta keeps sending the same message again.
+    return "OK", 200
 
 
 init_db()
