@@ -41,6 +41,17 @@ CLINIC_ADDRESS = os.environ.get("CLINIC_ADDRESS", "Main Boulevard, Sahiwal (demo
 CLINIC_CONTACT = os.environ.get("CLINIC_CONTACT", "")
 CLINIC_EMERGENCY = os.environ.get("CLINIC_EMERGENCY", "1122")
 
+# Logins that must not see the WhatsApp page (for example the demo login for doctors).
+NO_WHATSAPP_USERS = [
+    u.strip().lower()
+    for u in os.environ.get("CLINIC_NO_WHATSAPP_USERS", "drdemo").split(",")
+    if u.strip() != ""
+]
+
+
+def can_see_whatsapp():
+    return session.get("user", "").lower() not in NO_WHATSAPP_USERS
+
 STATUSES = ["Scheduled", "Done", "No-show", "Cancelled"]
 
 MAX_FAILS = 5
@@ -207,7 +218,7 @@ PAGE = COMMON_STYLE + """
   <button type="submit">Log out</button>
 </form>
 <h1>{{ clinic_name }}</h1>
-<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a> &nbsp;|&nbsp; <a href="/inbox">WhatsApp{% if inbox_count %} ({{ inbox_count }} need staff){% endif %}</a></p>
+<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a>{% if show_whatsapp %} &nbsp;|&nbsp; <a href="/inbox">WhatsApp{% if inbox_count %} ({{ inbox_count }} need staff){% endif %}</a>{% endif %}</p>
 
 {% if reminder %}
 <div class="message">
@@ -1267,7 +1278,8 @@ def add_to_templates():
         "ai_enabled": AI_ENABLED,
         "statuses": STATUSES,
         "clinic_name": CLINIC_NAME,
-        "inbox_count": inbox_count() if session.get("user") else 0,
+        "show_whatsapp": bool(session.get("user")) and can_see_whatsapp(),
+        "inbox_count": inbox_count() if session.get("user") and can_see_whatsapp() else 0,
     }
 
 
@@ -1297,6 +1309,9 @@ def protect():
 
     if request.endpoint != "login" and not session.get("user"):
         return redirect("/login")
+
+    if request.endpoint in ("inbox", "inbox_thread", "inbox_send", "inbox_done") and not can_see_whatsapp():
+        return redirect("/")
     return None
 
 
