@@ -153,6 +153,13 @@ COMMON_STYLE = (
   td[data-label="Date"], td[data-label="Time"] { white-space: nowrap; }
   .inline-form { margin: 0; display: inline-block; }
   .inline-form button { margin: 3px 3px 3px 0; }
+  .btn-link { display: inline-block; padding: 8px 14px; margin: 3px 3px 3px 0; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-weight: bold; font-size: 15px; text-decoration: none; }
+  .btn-link:hover { background: var(--accent-hover); color: var(--on-accent); }
+  textarea { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 16px; font-family: inherit; background: var(--field); color: var(--text); width: 100%; box-sizing: border-box; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .card .big { font-size: 26px; font-weight: bold; color: var(--accent); margin-top: 4px; }
+  .due { color: var(--error-text); font-weight: bold; }
 
   @media (max-width: 700px) {
     body { margin: 15px auto; }
@@ -218,7 +225,7 @@ PAGE = COMMON_STYLE + """
   <button type="submit">Log out</button>
 </form>
 <h1>{{ clinic_name }}</h1>
-<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a>{% if show_whatsapp %} &nbsp;|&nbsp; <a href="/inbox">WhatsApp{% if inbox_count %} ({{ inbox_count }} need staff){% endif %}</a>{% endif %}</p>
+<p><a href="/patients">Patients</a> &nbsp;|&nbsp; <a href="/doctors">Doctors</a> &nbsp;|&nbsp; <a href="/course">New course</a> &nbsp;|&nbsp; <a href="/earnings">Earnings</a>{% if show_whatsapp %} &nbsp;|&nbsp; <a href="/inbox">WhatsApp{% if inbox_count %} ({{ inbox_count }} need staff){% endif %}</a>{% endif %}</p>
 
 {% if reminder %}
 <div class="message">
@@ -239,7 +246,7 @@ PAGE = COMMON_STYLE + """
   {% for a in today_appointments %}
   <tr>
     <td data-label="Time">{{ a[3] }}</td>
-    <td data-label="Patient"><span>{{ a[0] }}{% if a[11] %}<br><small>Day {{ a[10] }} of {{ a[11] }}</small>{% endif %}</span></td>
+    <td data-label="Patient"><span><a href="/patient/{{ a[16] }}">{{ a[0] }}</a>{% if a[11] %}<br><small>Day {{ a[10] }} of {{ a[11] }}</small>{% endif %}</span></td>
     <td data-label="Age">{{ a[5] }}</td>
     <td data-label="Doctor">{{ a[1] }}</td>
     <td data-label="Phone">{{ a[6] }}</td>
@@ -257,6 +264,7 @@ PAGE = COMMON_STYLE + """
         <input type="hidden" name="status" value="No-show">
         <button type="submit" class="red">Did not come</button>
       </form>
+      <a href="/payment/{{ a[7] }}" class="btn-link">Payment</a>
     </td>
   </tr>
   {% endfor %}
@@ -350,12 +358,12 @@ PAGE = COMMON_STYLE + """
 {% if appointments %}
 <table>
   <thead>
-  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th>Status</th><th></th></tr>
+  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Doctor</th><th>Date</th><th>Time</th><th>Status</th><th>Payment</th><th></th></tr>
   </thead>
   <tbody>
   {% for a in appointments %}
   <tr>
-    <td data-label="Patient"><span>{{ a[0] }}{% if a[11] %}<br><small>Day {{ a[10] }} of {{ a[11] }}</small>{% endif %}</span></td>
+    <td data-label="Patient"><span><a href="/patient/{{ a[16] }}">{{ a[0] }}</a>{% if a[11] %}<br><small>Day {{ a[10] }} of {{ a[11] }}</small>{% endif %}</span></td>
     <td data-label="Age">{{ a[5] }}</td>
     <td data-label="Gender">{{ a[4] }}</td>
     <td data-label="Phone">{{ a[6] }}</td>
@@ -363,7 +371,9 @@ PAGE = COMMON_STYLE + """
     <td data-label="Date">{{ a[2] }}</td>
     <td data-label="Time">{{ a[3] }}</td>
     <td data-label="Status">{{ a[8] }}</td>
+    <td data-label="Payment">{% if a[12] is none %}-{% elif (a[12] or 0) > (a[13] or 0) %}<span class="due">Due {{ ((a[12] or 0) - (a[13] or 0))|money }}</span>{% else %}Paid {{ (a[13] or 0)|money }}{% endif %}</td>
     <td class="actions">
+      <a href="/payment/{{ a[7] }}" class="btn-link">Payment</a>
       <form method="post" action="/reschedule" class="inline-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="id" value="{{ a[7] }}">
@@ -576,15 +586,16 @@ PATIENTS_PAGE = COMMON_STYLE + """
 {% if patients %}
 <table>
   <thead>
-  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Appointments</th><th>Last appointment</th></tr>
+  <tr><th>Patient</th><th>Age</th><th>Gender</th><th>Phone</th><th>Diagnosis</th><th>Appointments</th><th>Last appointment</th></tr>
   </thead>
   <tbody>
   {% for p in patients %}
   <tr>
-    <td data-label="Patient">{{ p[1] }}</td>
+    <td data-label="Patient"><a href="/patient/{{ p[0] }}">{{ p[1] }}</a></td>
     <td data-label="Age">{{ p[2] }}</td>
     <td data-label="Gender">{{ p[3] }}</td>
     <td data-label="Phone">{{ p[4] }}</td>
+    <td data-label="Diagnosis">{{ (p[7] or "-")[:60] }}</td>
     <td data-label="Appointments">{{ p[5] }}</td>
     <td data-label="Last appointment">{{ p[6] }}</td>
   </tr>
@@ -769,6 +780,160 @@ Please call the patient{% if phone %} ({{ phone }}){% endif %}, or wait until th
 """
 
 
+PAYMENT_PAGE = COMMON_STYLE + """
+<h1>Payment</h1>
+<p><a href="/">&larr; Back to appointments</a> &nbsp;|&nbsp; <a href="/patient/{{ a[16] }}">Patient page</a></p>
+<p><b>Patient:</b> {{ a[0] }} &nbsp;|&nbsp; <b>Doctor:</b> {{ a[1] }} &nbsp;|&nbsp; <b>Date:</b> {{ a[2] }} at {{ a[3] }} &nbsp;|&nbsp; <b>Status:</b> {{ a[8] }}</p>
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+<form method="post" action="/payment/{{ a[7] }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p><label>Fee for this session (Rs): <input name="fee" type="number" min="0" max="10000000" value="{{ f.fee }}"></label></p>
+  <p><label>Amount received (Rs): <input name="paid" type="number" min="0" max="10000000" value="{{ f.paid }}"></label></p>
+  <p><label>Paid by:
+    <select name="method">
+      {% for m in methods %}
+      <option{% if m == f.method %} selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select></label>
+  </p>
+  <p><label>Session note (optional):<br>
+    <textarea name="note" rows="3" maxlength="500" placeholder="e.g. Exercises done, pain better">{{ f.note }}</textarea></label></p>
+  <button type="submit">Save payment</button>
+  &nbsp; <a href="/">Cancel</a>
+</form>
+<p style="margin-top: 16px;">Leave the fee empty to remove the payment record. If the patient pays the rest later, open this page again and change the amount received.</p>
+"""
+
+PATIENT_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>{{ p.name }}</h1>
+<p><a href="/patients">&larr; Back to patients</a> &nbsp;|&nbsp; <a href="/">Appointments</a></p>
+<p><b>Age:</b> {{ p.age }} &nbsp;|&nbsp; <b>Gender:</b> {{ p.gender }} &nbsp;|&nbsp; <b>Phone:</b> {{ p.phone }}</p>
+{% if notice %}<div class="message">{{ notice }}</div>{% endif %}
+
+<h2>Diagnosis</h2>
+<form method="post" action="/patient/{{ p.id }}/diagnosis">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p><textarea name="diagnosis" rows="4" maxlength="2000" placeholder="e.g. Lower back pain, L4-L5 disc bulge">{{ p.diagnosis }}</textarea></p>
+  <button type="submit">Save diagnosis</button>
+</form>
+
+<div class="cards">
+  <div class="card">Visits<div class="big">{{ visits|length }}</div></div>
+  <div class="card">Total received<div class="big">{{ total_paid|money }}</div></div>
+  <div class="card">Still due<div class="big{% if total_due %} due{% endif %}">{{ total_due|money }}</div></div>
+</div>
+
+<h2>Visits</h2>
+{% if visits %}
+<table>
+  <thead><tr><th>Date</th><th>Time</th><th>Doctor</th><th>Status</th><th>Session note</th><th>Fee</th><th>Received</th><th></th></tr></thead>
+  <tbody>
+  {% for v in visits %}
+  <tr>
+    <td data-label="Date">{{ v[2] }}</td>
+    <td data-label="Time">{{ v[3] }}</td>
+    <td data-label="Doctor">{{ v[1] }}</td>
+    <td data-label="Status">{{ v[8] }}</td>
+    <td data-label="Session note">{{ v[15] or "-" }}</td>
+    <td data-label="Fee">{% if v[12] is none %}-{% else %}{{ v[12]|money }}{% endif %}</td>
+    <td data-label="Received">{% if v[12] is none %}-{% else %}{{ (v[13] or 0)|money }}{% endif %}</td>
+    <td class="actions"><a href="/payment/{{ v[7] }}" class="btn-link">Payment</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No visits yet.</p>
+{% endif %}
+"""
+
+EARNINGS_PAGE = COMMON_STYLE + """
+<form method="post" action="/logout" style="float: right; margin: 0;">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <span style="margin-right: 8px;">{{ current_user }}</span>
+  <button type="submit">Log out</button>
+</form>
+<h1>Earnings</h1>
+<p><a href="/">&larr; Back to appointments</a></p>
+
+<div class="cards">
+  <div class="card">Received today ({{ today_text }})<div class="big">{{ today_paid|money }}</div></div>
+  <div class="card">Received this month ({{ this_month_name }})<div class="big">{{ this_month_paid|money }}</div></div>
+  <div class="card">Still due (all patients)<div class="big{% if all_due %} due{% endif %}">{{ all_due|money }}</div></div>
+</div>
+
+<h2>{{ month_name }}</h2>
+<p><a href="/earnings?month={{ prev_month }}">&larr; Previous month</a>{% if next_month %} &nbsp;|&nbsp; <a href="/earnings?month={{ next_month }}">Next month &rarr;</a>{% endif %}</p>
+<div class="cards">
+  <div class="card">Fees this month<div class="big">{{ month_fee|money }}</div></div>
+  <div class="card">Received this month<div class="big">{{ month_paid|money }}</div></div>
+  <div class="card">Due from this month<div class="big{% if month_due %} due{% endif %}">{{ month_due|money }}</div></div>
+</div>
+
+<h3>Day by day</h3>
+{% if days %}
+<table>
+  <thead><tr><th>Date</th><th>Paid sessions</th><th>Fees</th><th>Received</th><th>Due</th></tr></thead>
+  <tbody>
+  {% for d in days %}
+  <tr>
+    <td data-label="Date">{{ d.date }}</td>
+    <td data-label="Paid sessions">{{ d.count }}</td>
+    <td data-label="Fees">{{ d.fee|money }}</td>
+    <td data-label="Received">{{ d.paid|money }}</td>
+    <td data-label="Due">{% if d.due %}<span class="due">{{ d.due|money }}</span>{% else %}-{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No payments recorded in this month.</p>
+{% endif %}
+
+{% if doctors %}
+<h3>By doctor</h3>
+<table>
+  <thead><tr><th>Doctor</th><th>Paid sessions</th><th>Received</th></tr></thead>
+  <tbody>
+  {% for d in doctors %}
+  <tr><td data-label="Doctor">{{ d.name }}</td><td data-label="Paid sessions">{{ d.count }}</td><td data-label="Received">{{ d.paid|money }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Last 6 months</h2>
+<table>
+  <thead><tr><th>Month</th><th>Received</th></tr></thead>
+  <tbody>
+  {% for m in months %}
+  <tr><td data-label="Month"><a href="/earnings?month={{ m.key }}">{{ m.name }}</a></td><td data-label="Received">{{ m.paid|money }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if dues %}
+<h2>Patients who still owe money</h2>
+<table>
+  <thead><tr><th>Patient</th><th>Phone</th><th>Visits with dues</th><th>Due</th></tr></thead>
+  <tbody>
+  {% for d in dues %}
+  <tr><td data-label="Patient"><a href="/patient/{{ d.id }}">{{ d.name }}</a></td><td data-label="Phone">{{ d.phone }}</td><td data-label="Visits with dues">{{ d.count }}</td><td data-label="Due"><span class="due">{{ d.due|money }}</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<p style="margin-top: 16px;">Earnings are counted on the date of the appointment. Cancelled appointments are not counted.</p>
+"""
+
+
 def connect():
     return sqlite3.connect(DB_FILE)
 
@@ -831,9 +996,15 @@ def init_db():
     columns = [row[1] for row in cur.fetchall()]
     if "status" not in columns:
         cur.execute("ALTER TABLE appointments ADD COLUMN status TEXT DEFAULT 'Scheduled'")
-    for column in ("course_id", "day_no", "days_total"):
+    for column in ("course_id", "day_no", "days_total", "fee", "paid"):
         if column not in columns:
             cur.execute("ALTER TABLE appointments ADD COLUMN " + column + " INTEGER")
+    for column in ("pay_method", "note"):
+        if column not in columns:
+            cur.execute("ALTER TABLE appointments ADD COLUMN " + column + " TEXT")
+    cur.execute("PRAGMA table_info(patients)")
+    if "diagnosis" not in [row[1] for row in cur.fetchall()]:
+        cur.execute("ALTER TABLE patients ADD COLUMN diagnosis TEXT")
     conn.commit()
     conn.close()
 
@@ -874,7 +1045,9 @@ def read_appointments():
         SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
                patients.gender, patients.age, patients.phone, appointments.id,
                COALESCE(appointments.status, 'Scheduled'),
-               appointments.course_id, appointments.day_no, appointments.days_total
+               appointments.course_id, appointments.day_no, appointments.days_total,
+               appointments.fee, appointments.paid, appointments.pay_method, appointments.note,
+               patients.id
         FROM appointments
         JOIN patients ON appointments.patient_id = patients.id
         ORDER BY appointments.date, appointments.time
@@ -891,7 +1064,9 @@ def get_appointment(appointment_id):
         SELECT patients.name, appointments.doctor, appointments.date, appointments.time,
                patients.gender, patients.age, patients.phone, appointments.id,
                COALESCE(appointments.status, 'Scheduled'),
-               appointments.course_id, appointments.day_no, appointments.days_total
+               appointments.course_id, appointments.day_no, appointments.days_total,
+               appointments.fee, appointments.paid, appointments.pay_method, appointments.note,
+               patients.id
         FROM appointments
         JOIN patients ON appointments.patient_id = patients.id
         WHERE appointments.id = ?
@@ -1002,7 +1177,7 @@ def read_patients():
     cur = conn.cursor()
     cur.execute("""
         SELECT patients.id, patients.name, patients.age, patients.gender, patients.phone,
-               COUNT(appointments.id), MAX(appointments.date)
+               COUNT(appointments.id), MAX(appointments.date), patients.diagnosis
         FROM patients
         LEFT JOIN appointments ON appointments.patient_id = patients.id
         GROUP BY patients.id
@@ -1983,6 +2158,258 @@ def inbox_done():
     if phone and read_thread(phone):
         save_whatsapp_message(None, phone, "handled", "Marked as handled by " + session.get("user", "staff"))
     return redirect("/inbox/" + phone if phone else "/inbox")
+
+
+# ---------------- Payments, diagnosis and earnings ----------------
+
+PAY_METHODS = ["Cash", "Easypaisa", "JazzCash", "Bank transfer", "Card", "Other"]
+MAX_AMOUNT = 10000000
+
+
+def money(value):
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        number = 0
+    return "Rs " + format(number, ",")
+
+
+web.jinja_env.filters["money"] = money
+
+
+def read_amount(text):
+    # Returns (number or None, error). Empty text means None.
+    text = (text or "").strip().replace(",", "")
+    if text == "":
+        return None, ""
+    if not text.isdigit():
+        return None, "Error: amounts must be whole numbers, like 2000"
+    number = int(text)
+    if number > MAX_AMOUNT:
+        return None, "Error: the amount is too large"
+    return number, ""
+
+
+def last_fee_for_patient(patient_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT fee FROM appointments WHERE patient_id = ? AND fee IS NOT NULL ORDER BY date DESC, time DESC LIMIT 1",
+        (patient_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def save_payment(appointment_id, fee, paid, method, note):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE appointments SET fee = ?, paid = ?, pay_method = ?, note = ? WHERE id = ?",
+        (fee, paid, method, note, appointment_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def payment_form(a, form=None):
+    if form is not None:
+        return {
+            "fee": form.get("fee", ""), "paid": form.get("paid", ""),
+            "method": form.get("method", "Cash"), "note": form.get("note", ""),
+        }
+    fee = a[12]
+    if fee is None:
+        fee = last_fee_for_patient(a[16])
+    paid = a[13]
+    if paid is None and a[12] is None:
+        paid = fee
+    return {
+        "fee": "" if fee is None else fee,
+        "paid": "" if paid is None else paid,
+        "method": a[14] or "Cash",
+        "note": a[15] or "",
+    }
+
+
+@web.route("/payment/<int:appointment_id>", methods=["GET", "POST"])
+def payment(appointment_id):
+    a = get_appointment(appointment_id)
+    if a is None:
+        return redirect("/")
+    if request.method == "GET":
+        return render_template_string(PAYMENT_PAGE, a=a, f=payment_form(a), methods=PAY_METHODS, error="")
+
+    f = request.form
+    fee, error = read_amount(f.get("fee"))
+    paid = None
+    if error == "":
+        paid, error = read_amount(f.get("paid"))
+    method = f.get("method", "Cash")
+    note = f.get("note", "").strip()[:500]
+    if error == "" and method not in PAY_METHODS:
+        error = "Error: please choose how the patient paid"
+    if error == "" and fee is None and paid:
+        error = "Error: please write the fee first"
+    if error == "" and fee is not None and (paid or 0) > fee:
+        error = "Error: the amount received cannot be more than the fee"
+    if error != "":
+        return render_template_string(PAYMENT_PAGE, a=a, f=payment_form(a, f), methods=PAY_METHODS, error=error)
+
+    if fee is None:
+        save_payment(a[7], None, None, None, note or None)
+        session["notice"] = "Payment record removed for " + a[0] + "."
+    else:
+        paid = paid or 0
+        save_payment(a[7], fee, paid, method, note or None)
+        if paid < fee:
+            session["notice"] = "Payment saved for " + a[0] + ": " + money(paid) + " received, " + money(fee - paid) + " still due."
+        else:
+            session["notice"] = "Payment saved for " + a[0] + ": " + money(paid) + " received."
+    return redirect("/")
+
+
+def get_patient(patient_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, age, gender, phone, diagnosis FROM patients WHERE id = ?", (patient_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"id": row[0], "name": row[1], "age": row[2], "gender": row[3], "phone": row[4], "diagnosis": row[5] or ""}
+
+
+@web.route("/patient/<int:patient_id>")
+def patient_page(patient_id):
+    p = get_patient(patient_id)
+    if p is None:
+        return redirect("/patients")
+    visits = [a for a in read_appointments() if a[16] == patient_id]
+    visits.reverse()
+    counted = [v for v in visits if v[8] != "Cancelled" and v[12] is not None]
+    total_paid = sum((v[13] or 0) for v in counted)
+    total_due = sum(max((v[12] or 0) - (v[13] or 0), 0) for v in counted)
+    return render_template_string(
+        PATIENT_PAGE, p=p, visits=visits, total_paid=total_paid, total_due=total_due,
+        notice=session.pop("notice", ""),
+    )
+
+
+@web.route("/patient/<int:patient_id>/diagnosis", methods=["POST"])
+def patient_diagnosis(patient_id):
+    p = get_patient(patient_id)
+    if p is None:
+        return redirect("/patients")
+    text = request.form.get("diagnosis", "").strip()[:2000]
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE patients SET diagnosis = ? WHERE id = ?", (text or None, patient_id))
+    conn.commit()
+    conn.close()
+    session["notice"] = "Diagnosis saved."
+    return redirect("/patient/" + str(patient_id))
+
+
+def month_key_shift(key, step):
+    year, month = int(key[:4]), int(key[5:7])
+    month += step
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    return "%04d-%02d" % (year, month)
+
+
+def month_label(key):
+    return datetime.strptime(key + "-01", "%Y-%m-%d").strftime("%B %Y")
+
+
+def payment_rows(where, params):
+    # Payment rows that count: a fee was written and the visit was not cancelled.
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT appointments.date, appointments.doctor, appointments.fee, COALESCE(appointments.paid, 0), "
+        "patients.id, patients.name, patients.phone "
+        "FROM appointments JOIN patients ON appointments.patient_id = patients.id "
+        "WHERE appointments.fee IS NOT NULL AND COALESCE(appointments.status, 'Scheduled') != 'Cancelled' "
+        + where,
+        params,
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+@web.route("/earnings")
+def earnings():
+    now = clinic_now()
+    today = now.strftime("%Y-%m-%d")
+    this_month = now.strftime("%Y-%m")
+    month = request.args.get("month", this_month)
+    if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:]).isdigit() or not 1 <= int(month[5:]) <= 12:
+        month = this_month
+    if month > this_month:
+        month = this_month
+
+    today_paid = sum(r[3] for r in payment_rows("AND appointments.date = ?", (today,)))
+    this_month_paid = sum(r[3] for r in payment_rows("AND appointments.date LIKE ?", (this_month + "-%",)))
+    all_rows = payment_rows("", ())
+    all_due = sum(max(r[2] - r[3], 0) for r in all_rows)
+
+    rows = payment_rows("AND appointments.date LIKE ?", (month + "-%",))
+    by_day = {}
+    by_doctor = {}
+    for date, doctor, fee, paid, pid, name, phone in rows:
+        d = by_day.setdefault(date, {"date": date_to_show(date), "count": 0, "fee": 0, "paid": 0, "due": 0})
+        d["count"] += 1
+        d["fee"] += fee
+        d["paid"] += paid
+        d["due"] += max(fee - paid, 0)
+        doc = by_doctor.setdefault(doctor, {"name": doctor, "count": 0, "paid": 0})
+        doc["count"] += 1
+        doc["paid"] += paid
+    days = [by_day[k] for k in sorted(by_day, reverse=True)]
+    doctors = sorted(by_doctor.values(), key=lambda x: x["paid"], reverse=True)
+
+    months = []
+    key = this_month
+    for _ in range(6):
+        paid = sum(r[3] for r in payment_rows("AND appointments.date LIKE ?", (key + "-%",)))
+        months.append({"key": key, "name": month_label(key), "paid": paid})
+        key = month_key_shift(key, -1)
+
+    dues_by_patient = {}
+    for date, doctor, fee, paid, pid, name, phone in all_rows:
+        if fee > paid:
+            d = dues_by_patient.setdefault(pid, {"id": pid, "name": name, "phone": phone, "count": 0, "due": 0})
+            d["count"] += 1
+            d["due"] += fee - paid
+    dues = sorted(dues_by_patient.values(), key=lambda x: x["due"], reverse=True)[:30]
+
+    next_month = month_key_shift(month, 1)
+    return render_template_string(
+        EARNINGS_PAGE,
+        today_text=now.strftime("%d-%m-%Y"),
+        today_paid=today_paid,
+        this_month_name=month_label(this_month),
+        this_month_paid=this_month_paid,
+        all_due=all_due,
+        month_name=month_label(month),
+        month_fee=sum(r[2] for r in rows),
+        month_paid=sum(r[3] for r in rows),
+        month_due=sum(max(r[2] - r[3], 0) for r in rows),
+        prev_month=month_key_shift(month, -1),
+        next_month=next_month if next_month <= this_month else "",
+        days=days,
+        doctors=doctors if len(doctors) > 1 else [],
+        months=months,
+        dues=dues,
+    )
 
 
 init_db()
