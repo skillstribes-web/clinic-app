@@ -28,11 +28,19 @@ if answer.strip() != "DEMO":
     print("Nothing was changed.")
     raise SystemExit
 
-import web  # makes sure the new columns exist
-
 today = datetime.now(ZoneInfo(CLINIC_TZ)).strftime("%Y-%m-%d")
 conn = sqlite3.connect(DB_FILE)
 cur = conn.cursor()
+
+# Make sure the new columns exist (the web app also adds them when it reloads).
+cur.execute("PRAGMA table_info(appointments)")
+columns = [row[1] for row in cur.fetchall()]
+for column, kind in (("fee", "INTEGER"), ("paid", "INTEGER"), ("pay_method", "TEXT"), ("note", "TEXT")):
+    if column not in columns:
+        cur.execute("ALTER TABLE appointments ADD COLUMN " + column + " " + kind)
+cur.execute("PRAGMA table_info(patients)")
+if "diagnosis" not in [row[1] for row in cur.fetchall()]:
+    cur.execute("ALTER TABLE patients ADD COLUMN diagnosis TEXT")
 
 cur.execute(
     "SELECT id FROM appointments WHERE fee IS NULL AND date <= ? "
