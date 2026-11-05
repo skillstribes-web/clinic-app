@@ -42,6 +42,34 @@ cur.execute("PRAGMA table_info(patients)")
 if "diagnosis" not in [row[1] for row in cur.fetchall()]:
     cur.execute("ALTER TABLE patients ADD COLUMN diagnosis TEXT")
 
+from datetime import timedelta
+
+# The demo may only have future appointments. Then make some past "Done" visits
+# (last 25 days, Sundays skipped) for the demo patients, so there is something to earn.
+cur.execute(
+    "SELECT COUNT(*) FROM appointments WHERE date <= ? AND COALESCE(status, 'Scheduled') NOT IN ('Cancelled', 'No-show')",
+    (today,),
+)
+made = 0
+if cur.fetchone()[0] == 0:
+    cur.execute("SELECT id FROM patients ORDER BY id")
+    demo_patients = [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT name FROM doctors ORDER BY id")
+    demo_doctors = [row[0] for row in cur.fetchall()]
+    if demo_patients and demo_doctors:
+        start = datetime.now(ZoneInfo(CLINIC_TZ)).date()
+        slots = ["10:00", "10:45", "11:30", "12:15", "15:00", "15:45", "16:30", "17:15"]
+        for back in range(1, 26):
+            day = start - timedelta(days=back)
+            if day.weekday() == 6:
+                continue
+            for slot in random.sample(slots, random.randint(2, 5)):
+                cur.execute(
+                    "INSERT INTO appointments (patient_id, doctor, date, time, status) VALUES (?, ?, ?, ?, 'Done')",
+                    (random.choice(demo_patients), random.choice(demo_doctors), day.strftime("%Y-%m-%d"), slot),
+                )
+                made += 1
+
 cur.execute(
     "SELECT id FROM appointments WHERE fee IS NULL AND date <= ? "
     "AND COALESCE(status, 'Scheduled') NOT IN ('Cancelled', 'No-show')",
@@ -63,5 +91,7 @@ for patient_id in patient_ids:
 
 conn.commit()
 conn.close()
+if made:
+    print("Made " + str(made) + " past demo visits.")
 print("Demo payments added to " + str(len(appointment_ids)) + " appointments.")
 print("Demo diagnosis added to " + str(len(patient_ids)) + " patients.")
