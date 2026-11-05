@@ -31,9 +31,53 @@ WHATSAPP_AI = os.environ.get("WHATSAPP_AI") == "1"
 
 # Clinic information the agent is allowed to share. The defaults are demo values.
 # For a real clinic, set these in the server settings (WSGI file).
-CLINIC_HOURS = os.environ.get(
-    "CLINIC_HOURS", "Monday to Saturday, 10:00 AM to 8:00 PM. Closed on Sunday."
-)
+# Opening hours. Set these per clinic in the server settings (WSGI file).
+# Times are 24-hour HH:MM. Closed days: English day names separated by commas.
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def hhmm_to_minutes(text):
+    # "17:30" -> 1050. "24:00" is allowed as the end of the day. Returns None if wrong.
+    try:
+        hours, minutes = text.strip().split(":")
+        value = int(hours) * 60 + int(minutes)
+    except (AttributeError, ValueError):
+        return None
+    if value < 0 or value > 24 * 60 or int(minutes) > 59:
+        return None
+    return value
+
+
+def minutes_to_show(value):
+    if value >= 24 * 60:
+        return "12:00 AM (midnight)"
+    return datetime.strptime("%02d:%02d" % (value // 60, value % 60), "%H:%M").strftime("%I:%M %p").lstrip("0")
+
+
+CLINIC_OPEN = hhmm_to_minutes(os.environ.get("CLINIC_OPEN", "10:00"))
+CLINIC_CLOSE = hhmm_to_minutes(os.environ.get("CLINIC_CLOSE", "20:00"))
+if CLINIC_OPEN is None or CLINIC_CLOSE is None or CLINIC_OPEN >= CLINIC_CLOSE:
+    CLINIC_OPEN, CLINIC_CLOSE = 0, 24 * 60
+CLINIC_CLOSED_DAYS = [
+    DAY_NAMES.index(d.strip().capitalize())
+    for d in os.environ.get("CLINIC_CLOSED_DAYS", "Sunday").split(",")
+    if d.strip().capitalize() in DAY_NAMES
+]
+if len(set(CLINIC_CLOSED_DAYS)) >= 7:
+    CLINIC_CLOSED_DAYS = []
+
+
+def closed_days_text():
+    if not CLINIC_CLOSED_DAYS:
+        return "open every day"
+    return "closed on " + " and ".join(DAY_NAMES[d] for d in sorted(set(CLINIC_CLOSED_DAYS)))
+
+
+def clinic_hours_text():
+    return minutes_to_show(CLINIC_OPEN) + " to " + minutes_to_show(CLINIC_CLOSE) + ", " + closed_days_text()
+
+
+CLINIC_HOURS = os.environ.get("CLINIC_HOURS", "") or (clinic_hours_text()[0].upper() + clinic_hours_text()[1:] + ".")
 CLINIC_FEES = os.environ.get(
     "CLINIC_FEES", "Consultation: Rs 2,000. Physiotherapy session: Rs 1,500."
 )
@@ -284,6 +328,7 @@ PAGE = COMMON_STYLE + """
 {% endif %}
 
 <h2>New appointment</h2>
+<p>Clinic hours: {{ clinic_hours }}</p>
 {% if error %}
 <p class="error">{{ error }}</p>
 {% endif %}
@@ -460,7 +505,7 @@ COURSE_PAGE = COMMON_STYLE + """
 </form>
 <h1>New course</h1>
 <p><a href="/">&larr; Back to appointments</a></p>
-<p>Books the same time every day for one patient. Sundays are skipped. Each session takes {{ session_minutes }} minutes.
+<p>Books the same time every day for one patient. Days when the clinic is closed are skipped ({{ closed_days }}). Each session takes {{ session_minutes }} minutes.
 If the doctor is busy on any day, nothing is saved.</p>
 {% if error %}
 <p class="error">{{ error }}</p>
@@ -623,19 +668,32 @@ DOCTORS_PAGE = COMMON_STYLE + """
 <form method="post" action="/doctors/add">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <p>Name as it should appear (e.g. Dr. Waseem Khan): <input name="name" maxlength="60"></p>
+  <p>Works from <input type="time" name="start" step="900"> to <input type="time" name="end" step="900"> (leave empty if the doctor works all clinic hours)</p>
   <button type="submit">Add doctor</button>
 </form>
 
 <h2>Doctors in the list</h2>
+<p>Clinic hours: {{ clinic_hours }}</p>
 {% if doctors %}
 <table>
   <thead>
-  <tr><th>Doctor</th><th>Appointments</th><th></th></tr>
+  <tr><th>Doctor</th><th>Working hours</th><th>Appointments</th><th></th></tr>
   </thead>
   <tbody>
   {% for d in doctors %}
   <tr>
     <td data-label="Doctor">{{ d[1] }}</td>
+    <td data-label="Working hours">
+      <form method="post" action="/doctors/hours" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="id" value="{{ d[0] }}">
+        <input type="time" name="start" step="900" value="{{ d[3] or '' }}" aria-label="Works from">
+        to
+        <input type="time" name="end" step="900" value="{{ d[4] or '' }}" aria-label="Works until">
+        <button type="submit">Save hours</button>
+      </form>
+      {% if not d[3] %}<small>All clinic hours</small>{% endif %}
+    </td>
     <td data-label="Appointments">{{ d[2] }}</td>
     <td class="actions">
       {% if d[2] == 0 %}
@@ -1002,6 +1060,11 @@ def init_db():
     for column in ("pay_method", "note"):
         if column not in columns:
             cur.execute("ALTER TABLE appointments ADD COLUMN " + column + " TEXT")
+    cur.execute("PRAGMA table_info(doctors)")
+    doctor_columns = [row[1] for row in cur.fetchall()]
+    for column in ("start_time", "end_time"):
+        if column not in doctor_columns:
+            cur.execute("ALTER TABLE doctors ADD COLUMN " + column + " TEXT")
     cur.execute("PRAGMA table_info(patients)")
     if "diagnosis" not in [row[1] for row in cur.fetchall()]:
         cur.execute("ALTER TABLE patients ADD COLUMN diagnosis TEXT")
@@ -1200,7 +1263,7 @@ def read_doctors():
     conn = connect()
     cur = conn.cursor()
     cur.execute("""
-        SELECT doctors.id, doctors.name, COUNT(appointments.id)
+        SELECT doctors.id, doctors.name, COUNT(appointments.id), doctors.start_time, doctors.end_time
         FROM doctors
         LEFT JOIN appointments ON appointments.doctor = doctors.name COLLATE NOCASE
         GROUP BY doctors.id
@@ -1211,11 +1274,11 @@ def read_doctors():
     return rows
 
 
-def add_doctor(name):
+def add_doctor(name, start=None, end=None):
     conn = connect()
     cur = conn.cursor()
     try:
-        cur.execute("INSERT INTO doctors (name) VALUES (?)", (name,))
+        cur.execute("INSERT INTO doctors (name, start_time, end_time) VALUES (?, ?, ?)", (name, start, end))
         conn.commit()
         added = True
     except sqlite3.IntegrityError:
@@ -1319,6 +1382,21 @@ def find_schedule_error(doctor, date, time, skip_id=None, existing=None):
     start = to_minutes(time)
     end = start + SESSION_MINUTES
 
+    weekday = datetime.strptime(date, "%d-%m-%Y").weekday()
+    if weekday in CLINIC_CLOSED_DAYS:
+        return "Error: the clinic is closed on " + DAY_NAMES[weekday] + "s"
+    if start < CLINIC_OPEN or end > CLINIC_CLOSE:
+        return (
+            "Error: the clinic is open from " + minutes_to_show(CLINIC_OPEN) + " to " + minutes_to_show(CLINIC_CLOSE)
+            + ". The last session can start at " + minutes_to_show(CLINIC_CLOSE - SESSION_MINUTES) + "."
+        )
+    hours = doctor_hours(doctor)
+    if hours is not None and (start < hours[0] or end > hours[1]):
+        return (
+            "Error: " + doctor + " works from " + minutes_to_show(hours[0]) + " to " + minutes_to_show(hours[1])
+            + ". The last session can start at " + minutes_to_show(hours[1] - SESSION_MINUTES) + "."
+        )
+
     if existing is None:
         existing = read_appointments()
 
@@ -1387,7 +1465,7 @@ def find_error(name, doctor, date, time, gender, age, phone):
 
 def plan_course(doctor, start_text, days_text, times):
     # times is the list of session times of one day, like ["3:00 PM", "3:45 PM"].
-    # Returns (visits, error). A visit is (date, time, day_number). Sundays are skipped.
+    # Returns (visits, error). A visit is (date, time, day_number). Closed days are skipped.
     try:
         start = datetime.strptime(start_text, "%d-%m-%Y").date()
     except ValueError:
@@ -1419,7 +1497,7 @@ def plan_course(doctor, start_text, days_text, times):
     day = start
     day_no = 0
     while day_no < days:
-        if day.weekday() != 6:
+        if day.weekday() not in CLINIC_CLOSED_DAYS:
             day_no += 1
             for t in times:
                 visits.append((day.strftime("%d-%m-%Y"), t, day_no))
@@ -1453,6 +1531,7 @@ def add_to_templates():
         "ai_enabled": AI_ENABLED,
         "statuses": STATUSES,
         "clinic_name": CLINIC_NAME,
+        "clinic_hours": clinic_hours_text(),
         "show_whatsapp": bool(session.get("user")) and can_see_whatsapp(),
         "inbox_count": inbox_count() if session.get("user") and can_see_whatsapp() else 0,
     }
@@ -1570,6 +1649,34 @@ def home():
     return render_main(error=error, q=request.args.get("q", ""))
 
 
+def doctor_hours(doctor):
+    # (start, end) in minutes for this doctor, or None when the doctor works all clinic hours.
+    for d in read_doctors():
+        if d[1].lower() == doctor.lower() and d[3] and d[4]:
+            start, end = hhmm_to_minutes(d[3]), hhmm_to_minutes(d[4])
+            if start is not None and end is not None and start < end:
+                return (start, end)
+    return None
+
+
+def read_hours_form(form):
+    # Returns (start, end, error). Both empty = all clinic hours.
+    start_text = form.get("start", "").strip()
+    end_text = form.get("end", "").strip()
+    if start_text == "" and end_text == "":
+        return None, None, ""
+    start, end = hhmm_to_minutes(start_text), hhmm_to_minutes(end_text)
+    if start is None or end is None:
+        return None, None, "Error: please fill both times, or leave both empty"
+    if start >= end:
+        return None, None, "Error: the start time must be before the end time"
+    if start < CLINIC_OPEN or end > CLINIC_CLOSE:
+        return None, None, "Error: the doctor's hours must be inside clinic hours (" + clinic_hours_text() + ")"
+    if end - start < SESSION_MINUTES:
+        return None, None, "Error: the doctor's hours are shorter than one session"
+    return start_text, end_text, ""
+
+
 def render_doctors(error=""):
     return render_template_string(DOCTORS_PAGE, doctors=read_doctors(), error=error)
 
@@ -1582,12 +1689,31 @@ def doctors():
 @web.route("/doctors/add", methods=["POST"])
 def doctors_add():
     name = request.form.get("name", "").strip()
+    start, end, hours_error = read_hours_form(request.form)
+    if hours_error != "":
+        return render_doctors(error=hours_error)
     if name == "":
         return render_doctors(error="Error: please write the doctor's name")
     if len(name) > 60:
         return render_doctors(error="Error: the name can be 60 letters at most")
-    if not add_doctor(name):
+    if not add_doctor(name, start, end):
         return render_doctors(error="Error: this doctor is already in the list")
+    return redirect("/doctors")
+
+
+@web.route("/doctors/hours", methods=["POST"])
+def doctors_hours():
+    doctor_id = get_id(request.form)
+    if doctor_id is None:
+        return redirect("/doctors")
+    start, end, error = read_hours_form(request.form)
+    if error != "":
+        return render_doctors(error=error)
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE doctors SET start_time = ?, end_time = ? WHERE id = ?", (start, end, doctor_id))
+    conn.commit()
+    conn.close()
     return redirect("/doctors")
 
 
@@ -1677,6 +1803,7 @@ def render_course(error="", form=None, slots=None):
         max_days=MAX_COURSE_DAYS,
         max_sessions=MAX_SESSIONS_PER_DAY,
         session_minutes=SESSION_MINUTES,
+        closed_days=closed_days_text(),
     )
 
 
@@ -1715,7 +1842,7 @@ def course():
     session["notice"] = (
         "Course booked for " + name + ": " + days + " days, "
         + str(len(visits)) + " sessions, from " + visits[0][0] + " to " + visits[-1][0]
-        + ". Sundays are skipped."
+        + ". Closed days are skipped."
     )
     return redirect("/")
 
@@ -1896,9 +2023,15 @@ def recent_whatsapp_messages(phone):
 
 
 def agent_instructions():
-    doctors = [d[1] for d in read_doctors()]
+    doctors = []
+    for d in read_doctors():
+        hours = doctor_hours(d[1])
+        if hours is None:
+            doctors.append(doctor_title(d[1]))
+        else:
+            doctors.append(doctor_title(d[1]) + " (" + minutes_to_show(hours[0]) + " to " + minutes_to_show(hours[1]) + ")")
     if doctors:
-        doctor_text = ", ".join(doctor_title(d) for d in doctors)
+        doctor_text = ", ".join(doctors)
     else:
         doctor_text = "not listed"
     today = clinic_now().strftime("%A, %d-%m-%Y")
